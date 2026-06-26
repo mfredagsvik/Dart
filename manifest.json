@@ -1,11 +1,11 @@
 {
-  "name": "DART SCORE v4",
+  "name": "DART SCORE v5.3",
   "short_name": "DART SCORE",
   "start_url": "./index.html",
   "display": "fullscreen",
   "orientation": "landscape",
-  "background_color": "#090b0f",
-  "theme_color": "#090b0f",
+  "theme_color": "#050911",
+  "background_color": "#050911",
   "icons": [
     {
       "src": "icon-192.png",
