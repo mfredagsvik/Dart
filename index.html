@@ -1,145 +1,313 @@
+
 <!doctype html>
 <html lang="no">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#101316" />
-  <title>DART SCORE v3</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css" />
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#090b0f" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<title>DART SCORE v4</title>
+<style>
+:root{
+  --bg:#090b0f;--panel:#121821;--panel2:#17202c;--line:#263140;--text:#f5f7fb;--muted:#9ca8b8;
+  --green:#20d47b;--gold:#f7b733;--red:#ef4444;--blue:#4aa3ff;--orange:#fb923c;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif}
+button,input,select{font-family:inherit}
+.app{
+  width:100vw;height:100vh;overflow:hidden;display:grid;grid-template-rows:58px 132px 1fr 300px;gap:8px;padding:8px;
+  background:radial-gradient(circle at 50% 35%, rgba(247,183,51,.08), transparent 28%),linear-gradient(180deg,#0d1118,#07080b);
+}
+.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;background:linear-gradient(180deg,#151b24,#0e1218);border:1px solid var(--line);border-radius:14px;padding:0 10px;box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.logo{font-size:21px;font-weight:900;letter-spacing:.3px}.logo span{color:var(--gold)}
+.match{font-size:24px;font-weight:900;color:var(--gold);text-align:center}
+.nav{justify-self:end;display:flex;gap:6px}.nav button{background:#202835;color:#fff;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;font-weight:800}.nav .active{background:var(--gold);color:#101010}
+.players{display:grid;grid-template-columns:repeat(var(--player-cols,4),1fr);gap:8px;min-height:0}
+.player{position:relative;background:linear-gradient(180deg,#151d28,#101620);border:2px solid var(--line);border-radius:14px;padding:9px 11px;display:grid;grid-template-rows:auto 1fr auto;min-width:0}
+.player.active{border-color:var(--green);box-shadow:0 0 0 3px rgba(32,212,123,.12), 0 0 22px rgba(32,212,123,.12)}
+.pname{font-size:17px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pscore{font-size:52px;font-weight:900;line-height:.95;letter-spacing:-2px}
+.pmeta{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;color:var(--muted);font-size:10px}.pmeta b{display:block;color:var(--text);font-size:14px}
+.active-main{display:grid;grid-template-columns:1fr 145px;gap:8px;min-height:0}
+.hero{background:linear-gradient(180deg,#111923,#0c1118);border:2px solid var(--line);border-radius:16px;display:grid;grid-template-columns:1fr 210px;overflow:hidden;min-height:0}
+.hero-left{padding:14px 18px;display:flex;flex-direction:column;justify-content:center;min-width:0}
+.turn-label{font-size:13px;color:var(--muted);font-weight:800;letter-spacing:.8px}.turn-name{font-size:31px;font-weight:950;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.remaining{font-size:88px;font-weight:950;line-height:.9;color:var(--gold);letter-spacing:-4px;margin:5px 0}.checkout,.darts{font-size:17px}.checkout span{color:var(--green);font-weight:900}.darts{margin-top:8px;color:var(--muted)}.darts b{color:var(--text)}
+.message{margin-top:8px;font-size:16px;font-weight:800;color:var(--orange);min-height:20px}
+.hero-side{border-left:1px solid var(--line);background:#0c1219;display:grid;grid-template-rows:1fr 1fr}
+.sidebox{padding:13px;border-bottom:1px solid var(--line)}.sidebox:last-child{border-bottom:0}.side-title{color:var(--muted);font-size:11px;font-weight:900;margin-bottom:8px}.side-big{font-size:32px;font-weight:950}
+.quick{display:grid;grid-template-rows:1fr 1fr;gap:8px}.quick button{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);font-size:18px;font-weight:900}.quick .yellow{background:linear-gradient(180deg,#342917,#1d1710);border-color:#6a501b;color:#ffd15e}.quick .helmet{background:linear-gradient(180deg,#2b2414,#17140d);border-color:#5c4919;color:#ffd15e}
+.controls{display:grid;grid-template-columns:120px 1fr 150px;gap:8px;min-height:0}.modifiers,.actions{display:grid;grid-template-rows:1fr 1fr 1fr;gap:7px}.numbers{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat(3,1fr);gap:7px}
+.btn{border:0;border-radius:12px;color:white;font-weight:950;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08), 0 8px 20px rgba(0,0,0,.25)}.btn-d{background:linear-gradient(180deg,#1f7b43,#13582f);font-size:34px}.btn-t{background:linear-gradient(180deg,#b32727,#7b1919);font-size:34px}.btn-m{background:linear-gradient(180deg,#394251,#202835);font-size:34px}.btn.selected{outline:4px solid var(--gold)}
+.num{background:linear-gradient(180deg,#242c38,#151b24);border:1px solid #333e4d;border-radius:12px;color:white;font-size:27px;font-weight:950}.num.hot{border-color:#73561d;background:linear-gradient(180deg,#3a2b16,#1d1710);color:#ffd15e}
+.undo{background:linear-gradient(180deg,#343b47,#1c222b);font-size:17px}.ok{background:linear-gradient(180deg,#2fbb63,#188144);font-size:20px}
+.page{display:none;width:100vw;height:100vh;overflow:auto;background:#090b0f;color:white;padding:14px}.page.active{display:block}.page h1{margin:0 0 12px}.panel{background:#111923;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.field{background:#0d1219;border:1px solid var(--line);border-radius:10px;color:white;padding:10px;font-size:16px}.panel button,.page button{background:#202835;color:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-weight:800}.primary{background:var(--gold)!important;color:#111!important}.danger{background:#7f1d1d!important}.table{width:100%;border-collapse:collapse;font-size:14px}.table th,.table td{border-bottom:1px solid #263140;padding:8px;text-align:left}.small{color:var(--muted);font-size:13px}
+@media (max-width:900px){.app{transform:scale(.92);transform-origin:top left;width:108.7vw;height:108.7vh}}
+</style>
 </head>
 <body>
-  <div id="app" class="app-shell">
-    <header class="topbar">
-      <div class="brand">
-        <div class="logo-dot">🎯</div>
-        <div>
-          <div class="app-title">DART SCORE</div>
-          <div class="app-subtitle">v3 Compact · 10,1” nettbrett</div>
-        </div>
+<main id="game" class="app">
+  <header class="topbar">
+    <div class="logo">🎯 DART <span>SCORE</span></div>
+    <div class="match" id="matchTitle">LEG 1 / 501</div>
+    <div class="nav">
+      <button onclick="showPage('setup')">Oppsett</button>
+      <button onclick="showPage('history')">Historikk</button>
+      <button onclick="showPage('stats')">Statistikk</button>
+    </div>
+  </header>
+  <section class="players" id="players"></section>
+  <section class="active-main">
+    <div class="hero">
+      <div class="hero-left">
+        <div class="turn-label">AKTIV SPILLER</div>
+        <div class="turn-name" id="turnName">-</div>
+        <div class="remaining" id="remaining">501</div>
+        <div class="checkout">Checkout: <span id="checkout">—</span></div>
+        <div class="darts" id="darts">Pil 1: <b>—</b> · Pil 2: <b>—</b> · Pil 3: <b>—</b></div>
+        <div class="message" id="message"></div>
       </div>
-      <nav class="tabs" aria-label="Navigasjon">
-        <button class="tab active" data-view="game">Spill</button>
-        <button class="tab" data-view="history">Historikk</button>
-        <button class="tab" data-view="stats">Statistikk</button>
-        <button class="tab" data-view="setup">Oppsett</button>
-      </nav>
-    </header>
+      <div class="hero-side">
+        <div class="sidebox"><div class="side-title">RUNDE</div><div class="side-big" id="roundSum">0</div></div>
+        <div class="sidebox"><div class="side-title">DAGENS HØYESTE</div><div class="side-big" id="dailyHigh">0</div></div>
+      </div>
+    </div>
+    <div class="quick">
+      <button class="yellow" onclick="card('yellow')">🟨<br>GULT KORT</button>
+      <button class="helmet" onclick="card('helmet')">⛑️<br>HJELM BRUKT</button>
+    </div>
+  </section>
+  <section class="controls">
+    <div class="modifiers">
+      <button id="btnD" class="btn btn-d" onclick="toggleMod('D')">D</button>
+      <button id="btnT" class="btn btn-t" onclick="toggleMod('T')">T</button>
+      <button class="btn btn-m" onclick="miss()">M</button>
+    </div>
+    <div class="numbers" id="numbers"></div>
+    <div class="actions">
+      <button class="btn undo" onclick="undoDart()">↶ ANGRE PIL</button>
+      <button class="btn undo" onclick="undoThrow()">↶ ANGRE KAST</button>
+      <button class="btn ok" onclick="saveThrow()">OK<br>NESTE</button>
+    </div>
+  </section>
+</main>
 
-    <main class="main">
-      <section id="gameView" class="view game-view active">
-        <aside class="side-panel">
-          <div class="panel-card match-card">
-            <div class="label">Kamp</div>
-            <div class="match-score"><span id="gameTypeLabel">501</span></div>
-            <div class="rule-row"><span>IN</span><strong id="inRuleLabel">Master In</strong></div>
-            <div class="rule-row"><span>OUT</span><strong id="outRuleLabel">Double Out</strong></div>
-          </div>
-          <div class="panel-card today-card">
-            <div class="label">Dagens høyeste 3-pils kast</div>
-            <div class="big-metric" id="dailyHigh">0</div>
-            <div class="muted" id="dailyHighPlayer">Ingen kast ennå</div>
-          </div>
-          <div class="panel-card checkout-card">
-            <div class="label">Checkout-forslag</div>
-            <div id="checkoutSuggestion" class="checkout">–</div>
-          </div>
-          <div class="panel-card actions-card">
-            <button id="undoThrowBtn" class="secondary wide">Angre kast</button>
-            <button id="newGameBtn" class="danger wide">Nytt spill</button>
-          </div>
-        </aside>
-
-        <section class="scoreboard">
-          <div id="playersGrid" class="players-grid"></div>
-
-          <div class="active-player-zone">
-            <div class="active-info">
-              <div class="label">Aktiv spiller</div>
-              <div id="activeName" class="active-name">–</div>
-              <div class="active-score-row">
-                <span>Score igjen</span>
-                <strong id="activeScore">501</strong>
-              </div>
-              <div id="turnDarts" class="turn-darts">Pil 1: – · Pil 2: – · Pil 3: –</div>
-              <div id="turnTotal" class="turn-total">Runde: 0</div>
-              <div id="message" class="message">Velg D/T eller trykk tall direkte for single.</div>
-            </div>
-            <div class="player-buttons">
-              <button id="yellowBtn" class="small-action">Gult kort</button>
-              <button id="helmetBtn" class="small-action">Hjelm brukt</button>
-            </div>
-          </div>
-
-          <div class="score-input">
-            <div class="modifier-row">
-              <button id="doubleBtn" class="modifier">D</button>
-              <button id="tripleBtn" class="modifier">T</button>
-              <button id="missBtn" class="modifier miss">M</button>
-              <button id="undoDartBtn" class="modifier utility">Angre pil</button>
-            </div>
-            <div id="numberPad" class="number-pad"></div>
-          </div>
-        </section>
-      </section>
-
-      <section id="historyView" class="view history-view">
-        <div class="page-head">
-          <div><h1>Historikk</h1><p>Detaljer per kamp og alle registrerte kast.</p></div>
-          <div class="head-actions">
-            <button id="exportCsvBtn" class="primary">Eksporter CSV</button>
-            <button id="clearHistoryBtn" class="danger">Nullstill historikk</button>
-          </div>
-        </div>
-        <div class="history-layout">
-          <div class="history-list" id="historyList"></div>
-          <div class="history-detail" id="historyDetail">Velg en kamp for detaljvisning.</div>
-        </div>
-      </section>
-
-      <section id="statsView" class="view stats-view">
-        <div class="page-head"><div><h1>Statistikk</h1><p>Spillerstatistikk fra lagret historikk.</p></div></div>
-        <div id="statsGrid" class="stats-grid"></div>
-      </section>
-
-      <section id="setupView" class="view setup-view">
-        <div class="setup-panel">
-          <h1>Oppsett</h1>
-          <div class="setup-grid">
-            <div class="setup-card">
-              <h2>Spilltype</h2>
-              <label><input type="radio" name="gameType" value="301"> 301</label>
-              <label><input type="radio" name="gameType" value="501" checked> 501</label>
-            </div>
-            <div class="setup-card">
-              <h2>IN</h2>
-              <label><input type="radio" name="inRule" value="single"> Single In</label>
-              <label><input type="radio" name="inRule" value="master" checked> Master In</label>
-            </div>
-            <div class="setup-card">
-              <h2>OUT</h2>
-              <label><input type="radio" name="outRule" value="single"> Single Out</label>
-              <label><input type="radio" name="outRule" value="double" checked> Double Out</label>
-              <label><input type="radio" name="outRule" value="master"> Master Out</label>
-            </div>
-            <div class="setup-card options">
-              <h2>Visning</h2>
-              <label><input type="checkbox" id="showCheckout" checked> Vis checkout-forslag</label>
-              <label><input type="checkbox" id="showAverage" checked> Vis 3-darts average</label>
-              <label><input type="checkbox" id="saveThrows" checked> Lagre alle kast</label>
-              <label><input type="checkbox" id="showDailyHigh" checked> Vis dagens høyeste 3-pils kast</label>
-            </div>
-          </div>
-          <div class="players-setup">
-            <h2>Spillere (2–8)</h2>
-            <textarea id="playersInput" spellcheck="false">Marius
-Dag Arne</textarea>
-            <button id="startGameBtn" class="primary big">Start spill</button>
-          </div>
-        </div>
-      </section>
-    </main>
+<section id="setup" class="page">
+  <h1>Oppsett</h1>
+  <div class="panel">
+    <h2>Nytt spill</h2>
+    <div class="row">
+      <label>Spilltype <select id="startScore" class="field"><option>301</option><option selected>501</option><option>701</option></select></label>
+      <label>IN <select id="inRule" class="field"><option value="single">Single In</option><option value="master" selected>Master In</option></select></label>
+      <label>OUT <select id="outRule" class="field"><option value="single">Single Out</option><option value="double" selected>Double Out</option><option value="master">Master Out</option></select></label>
+    </div>
+    <h3>Spillere</h3>
+    <div id="playerInputs"></div>
+    <div class="row">
+      <button onclick="addPlayerInput()">+ Spiller</button>
+      <button onclick="removePlayerInput()">- Spiller</button>
+      <button class="primary" onclick="newGame()">Start nytt spill</button>
+      <button onclick="showPage('game')">Tilbake</button>
+    </div>
   </div>
-  <script src="app.js"></script>
+</section>
+
+<section id="history" class="page">
+  <h1>Historikk</h1>
+  <div class="panel row">
+    <button onclick="showPage('game')">Tilbake til spill</button>
+    <button onclick="exportCSV()">Eksporter CSV</button>
+    <button class="danger" onclick="clearHistory()">Slett historikk</button>
+  </div>
+  <div class="panel">
+    <h2>Kamper</h2>
+    <table class="table" id="historyTable"></table>
+  </div>
+  <div class="panel">
+    <h2>Kast i valgt kamp</h2>
+    <table class="table" id="throwTable"></table>
+  </div>
+</section>
+
+<section id="stats" class="page">
+  <h1>Statistikk</h1>
+  <div class="panel row"><button onclick="showPage('game')">Tilbake til spill</button></div>
+  <div class="panel"><table class="table" id="statsTable"></table></div>
+</section>
+
+<script>
+const STORE='dartscore-v4-complete';
+let state = JSON.parse(localStorage.getItem(STORE)||'null') || defaultState();
+let selectedMod = null;
+
+function defaultState(){
+  return {
+    gameId: Date.now(), startScore:501, inRule:'master', outRule:'double', active:0, leg:1, current:[],
+    players:[p('Marius'),p('Dag Arne'),p('Sven Tore'),p('Spiller 4')],
+    throws:[], games:[], dailyDate:new Date().toISOString().slice(0,10), dailyHigh:0, message:''
+  };
+}
+function p(name){return {name,score:501,inOpen:false,darts:0,totalScored:0,high:0,n180:0,n140:0,n100:0,yellow:0,helmet:0,winner:false};}
+function save(){localStorage.setItem(STORE,JSON.stringify(state));}
+function showPage(id){
+  document.getElementById('game').style.display = id==='game'?'grid':'none';
+  document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+  if(id!=='game') document.getElementById(id).classList.add('active');
+  if(id==='history') renderHistory();
+  if(id==='stats') renderStats();
+}
+function render(){
+  if(new Date().toISOString().slice(0,10)!==state.dailyDate){state.dailyDate=new Date().toISOString().slice(0,10);state.dailyHigh=0;}
+  document.getElementById('matchTitle').textContent = `LEG ${state.leg} / ${state.startScore}`;
+  document.documentElement.style.setProperty('--player-cols', Math.min(state.players.length,4));
+  const wrap=document.getElementById('players'); wrap.innerHTML='';
+  state.players.forEach((pl,i)=>{
+    const avg = pl.darts ? ((pl.totalScored/pl.darts)*3).toFixed(1) : '0.0';
+    wrap.innerHTML += `<article class="player ${i===state.active?'active':''}">
+      <div class="pname">${esc(pl.name)}${pl.winner?' 🏆':''}</div><div class="pscore">${pl.score}</div>
+      <div class="pmeta"><div>Avg<b>${avg}</b></div><div>180<b>${pl.n180}</b></div><div>High<b>${pl.high}</b></div><div>Hjelm<b>${pl.helmet?'Ja':'Nei'}</b></div></div>
+    </article>`;
+  });
+  const pl=state.players[state.active];
+  document.getElementById('turnName').textContent=pl.name;
+  document.getElementById('remaining').textContent=pl.score;
+  document.getElementById('checkout').textContent = checkout(pl.score);
+  const ds=[0,1,2].map(i=> state.current[i] ? `<b>${state.current[i].label}</b>` : '<b>—</b>');
+  document.getElementById('darts').innerHTML = `Pil 1: ${ds[0]} · Pil 2: ${ds[1]} · Pil 3: ${ds[2]}`;
+  document.getElementById('roundSum').textContent = state.current.reduce((a,d)=>a+d.value,0);
+  document.getElementById('dailyHigh').textContent = state.dailyHigh;
+  document.getElementById('message').textContent = state.message||'';
+  document.getElementById('btnD').classList.toggle('selected',selectedMod==='D');
+  document.getElementById('btnT').classList.toggle('selected',selectedMod==='T');
+  save();
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function buildNums(){
+  const nums=[20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,25];
+  document.getElementById('numbers').innerHTML = nums.map(n=>`<button class="num ${(n>=19||n===25)?'hot':''}" onclick="hit(${n})">${n}</button>`).join('');
+}
+function toggleMod(m){selectedMod = selectedMod===m ? null : m; render();}
+function addDart(label,value,rawValue,mod,num){
+  if(state.current.length>=3) return;
+  state.current.push({label,value,rawValue,mod,num});
+  selectedMod=null; state.message='';
+  if(state.current.length===3) saveThrow(); else render();
+}
+function hit(num){
+  const mod=selectedMod||'S';
+  let mult = mod==='D'?2:mod==='T'?3:1;
+  let raw = num*mult;
+  if(num===25 && mod==='D') raw=50;
+  if(num===25 && mod==='T') raw=25; // triple bull finnes ikke, teller som single bull
+  const pl=state.players[state.active];
+  let value=raw, label=`${mod}${num}`;
+  if(state.inRule==='master' && !pl.inOpen && mod==='S'){ value=0; label=`S${num}=0`; }
+  addDart(label,value,raw,mod,num);
+}
+function miss(){addDart('M',0,0,'M',0);}
+function undoDart(){state.current.pop(); state.message=''; render();}
+function saveThrow(){
+  const pl=state.players[state.active];
+  while(state.current.length<3) state.current.push({label:'-',value:0,rawValue:0,mod:'M',num:0});
+  const before=pl.score;
+  let darts=state.current.map(x=>({...x}));
+  let openedThisThrow=false;
+  if(state.inRule==='master' && !pl.inOpen){
+    let openIndex=darts.findIndex(d=>d.mod==='D'||d.mod==='T');
+    if(openIndex<0){darts=darts.map(d=>({...d,value:0,label:d.label==='-'?'-':`${d.label.replace('=0','')}=0`}));}
+    else{
+      openedThisThrow=true;
+      darts=darts.map((d,i)=> i<openIndex ? {...d,value:0,label:d.label==='-'?'-':`${d.label}=0`} : d);
+    }
+  }
+  const sum=darts.reduce((a,d)=>a+d.value,0);
+  const after=before-sum;
+  const lastScoring = [...darts].reverse().find(d=>d.value>0);
+  let bust=false, win=false, msg='';
+  if(after<0 || after===1){bust=true; msg='BUST';}
+  if(after===0){
+    const okOut = state.outRule==='single' || (state.outRule==='double' && lastScoring?.mod==='D') || (state.outRule==='master' && (lastScoring?.mod==='D'||lastScoring?.mod==='T'));
+    if(okOut){win=true; msg=`${pl.name} vant!`;} else {bust=true; msg='BUST – feil avslutning';}
+  }
+  state.throws.push({gameId:state.gameId,time:new Date().toLocaleString('no-NO'),player:pl.name,playerIndex:state.active,before,darts,sum,bust,after:bust?before:after,inOpened:openedThisThrow,ruleIn:state.inRule,ruleOut:state.outRule});
+  if(!bust){
+    pl.score=after; pl.darts += darts.filter(d=>d.label!=='-').length || 3; pl.totalScored += sum;
+    if(openedThisThrow || state.inRule==='single') pl.inOpen=true;
+    pl.high=Math.max(pl.high,sum); if(sum===180)pl.n180++; if(sum>=140)pl.n140++; if(sum>=100)pl.n100++;
+    state.dailyHigh=Math.max(state.dailyHigh,sum);
+    if(win){pl.winner=true; finishGame(pl.name);}
+  }
+  state.current=[]; state.message=msg;
+  if(!win) nextPlayer();
+  render();
+}
+function nextPlayer(){let i=state.active; for(let n=0;n<state.players.length;n++){i=(i+1)%state.players.length;if(!state.players[i].winner){state.active=i;break;}}}
+function undoThrow(){
+  const t=state.throws.pop(); if(!t){state.message='Ingen kast å angre';render();return;}
+  const pl=state.players[t.playerIndex]; state.active=t.playerIndex; pl.score=t.before; pl.winner=false;
+  if(!t.bust){pl.darts=Math.max(0,pl.darts-3); pl.totalScored=Math.max(0,pl.totalScored-t.sum);}
+  // rebuild safer
+  rebuildStatsFromThrows();
+  state.current=[]; state.message='Kast angret'; render();
+}
+function rebuildStatsFromThrows(){
+  const names=state.players.map(p=>({name:p.name,yellow:p.yellow,helmet:p.helmet}));
+  state.players=names.map(x=>({...p(x.name), yellow:x.yellow, helmet:x.helmet, score:state.startScore, inOpen:state.inRule==='single'}));
+  state.dailyHigh=0;
+  const old=[...state.throws]; state.throws=[];
+  let active=state.active;
+  old.forEach(t=>{
+    const idx=t.playerIndex, pl=state.players[idx]; const sum=t.bust?0:t.sum;
+    if(!t.bust){pl.score=t.after; pl.darts+=3; pl.totalScored+=t.sum; pl.inOpen=true; pl.high=Math.max(pl.high,t.sum); if(t.sum===180)pl.n180++; if(t.sum>=140)pl.n140++; if(t.sum>=100)pl.n100++; state.dailyHigh=Math.max(state.dailyHigh,t.sum);}
+    state.throws.push(t);
+  });
+  state.active=active;
+}
+function card(type){const pl=state.players[state.active]; if(type==='yellow')pl.yellow++; else pl.helmet=pl.helmet?0:1; render();}
+function checkout(score){
+  const m={170:'T20 T20 Bull',167:'T20 T19 Bull',164:'T20 T18 Bull',161:'T20 T17 Bull',160:'T20 T20 D20',158:'T20 T20 D19',157:'T20 T19 D20',156:'T20 T20 D18',155:'T20 T19 D19',154:'T20 T18 D20',153:'T20 T19 D18',152:'T20 T20 D16',151:'T20 T17 D20',150:'T20 T18 D18',141:'T20 T19 D12',140:'T20 T20 D10',121:'T20 T11 D14',100:'T20 D20',81:'T19 D12',60:'20 D20',50:'Bull',40:'D20',32:'D16',24:'D12',16:'D8',8:'D4',4:'D2',2:'D1'};
+  return m[score] || (score<170?'—':'—');
+}
+function finishGame(winner){
+  state.games.unshift({id:state.gameId,date:new Date().toLocaleString('no-NO'),winner,startScore:state.startScore,inRule:state.inRule,outRule:state.outRule,players:state.players.map(p=>p.name).join(', '),throws:state.throws.filter(t=>t.gameId===state.gameId).length});
+}
+function setupInputs(){
+  const box=document.getElementById('playerInputs'); box.innerHTML='';
+  state.players.forEach((pl,i)=> box.innerHTML+=`<input class="field playerName" value="${esc(pl.name)}" placeholder="Spiller ${i+1}"> `);
+}
+function addPlayerInput(){ if(document.querySelectorAll('.playerName').length>=8)return; const box=document.getElementById('playerInputs'); box.innerHTML+=`<input class="field playerName" value="" placeholder="Spiller"> `;}
+function removePlayerInput(){ const inputs=document.querySelectorAll('.playerName'); if(inputs.length>2) inputs[inputs.length-1].remove();}
+function newGame(){
+  const names=[...document.querySelectorAll('.playerName')].map(x=>x.value.trim()).filter(Boolean).slice(0,8);
+  if(names.length<2){alert('Legg inn minst 2 spillere');return;}
+  const score=+document.getElementById('startScore').value;
+  state={...state, gameId:Date.now(), startScore:score, inRule:document.getElementById('inRule').value, outRule:document.getElementById('outRule').value, active:0, leg:1, current:[], throws:[], message:'', players:names.map(n=>({...p(n),score,inOpen:document.getElementById('inRule').value==='single'}))};
+  showPage('game'); render();
+}
+function renderHistory(){
+  document.getElementById('historyTable').innerHTML='<tr><th>Dato</th><th>Vinner</th><th>Spill</th><th>Regler</th><th>Spillere</th><th>Kast</th><th></th></tr>'+state.games.map(g=>`<tr><td>${g.date}</td><td>${esc(g.winner)}</td><td>${g.startScore}</td><td>${g.inRule}/${g.outRule}</td><td>${esc(g.players)}</td><td>${g.throws}</td><td><button onclick="showThrows(${g.id})">Vis</button></td></tr>`).join('');
+  showThrows(state.games[0]?.id);
+}
+function showThrows(id){
+  const rows=state.throws.filter(t=>!id||t.gameId===id);
+  document.getElementById('throwTable').innerHTML='<tr><th>Tid</th><th>Spiller</th><th>Før</th><th>Pil 1</th><th>Pil 2</th><th>Pil 3</th><th>Sum</th><th>Etter</th><th>Status</th></tr>'+rows.map(t=>`<tr><td>${t.time}</td><td>${esc(t.player)}</td><td>${t.before}</td><td>${t.darts[0].label}</td><td>${t.darts[1].label}</td><td>${t.darts[2].label}</td><td>${t.sum}</td><td>${t.after}</td><td>${t.bust?'Bust':t.inOpened?'Åpnet':''}</td></tr>`).join('');
+}
+function renderStats(){
+  const agg={};
+  [...state.players.map(pl=>pl.name), ...state.throws.map(t=>t.player)].forEach(n=>agg[n]=agg[n]||{name:n,darts:0,total:0,high:0,n180:0,n140:0,n100:0});
+  state.throws.forEach(t=>{if(t.bust)return; const a=agg[t.player]; a.darts+=3;a.total+=t.sum;a.high=Math.max(a.high,t.sum);if(t.sum===180)a.n180++;if(t.sum>=140)a.n140++;if(t.sum>=100)a.n100++;});
+  document.getElementById('statsTable').innerHTML='<tr><th>Spiller</th><th>3-darts avg</th><th>High</th><th>180</th><th>140+</th><th>100+</th></tr>'+Object.values(agg).map(a=>`<tr><td>${esc(a.name)}</td><td>${a.darts?((a.total/a.darts)*3).toFixed(1):'0.0'}</td><td>${a.high}</td><td>${a.n180}</td><td>${a.n140}</td><td>${a.n100}</td></tr>`).join('');
+}
+function exportCSV(){
+  const rows=[['Tid','KampID','Spiller','Før','Pil1','Pil2','Pil3','Sum','Etter','Bust','IN','OUT']];
+  state.throws.forEach(t=>rows.push([t.time,t.gameId,t.player,t.before,t.darts[0].label,t.darts[1].label,t.darts[2].label,t.sum,t.after,t.bust,t.ruleIn,t.ruleOut]));
+  const csv=rows.map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(';')).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download='dart-score-historikk.csv'; a.click();
+}
+function clearHistory(){if(confirm('Slette all historikk?')){state.games=[];state.throws=[];save();renderHistory();}}
+buildNums(); setupInputs(); render();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');
+</script>
 </body>
 </html>
