@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <title>DART SCORE</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+    <section id="setup" class="screen setup-screen">
+      <div class="brand-panel">
+        <div class="logo-mark">D</div><div><h1>DART SCORE</h1><p>Scoreboard PWA for nettbrett</p></div>
+      </div>
+      <div class="setup-grid">
+        <div class="panel"><h2>Spillere</h2><div id="playersList" class="players-list"></div><div class="row"><input id="playerName" placeholder="Spillernavn" autocomplete="off" /><button id="addPlayerBtn" class="btn">Legg til</button></div><p class="hint">Støtter 2–8 spillere. Aktiv spiller markeres tydelig.</p></div>
+        <div class="panel"><h2>Regler</h2>
+          <div class="rule-block"><label>Spilltype</label><div class="segmented" data-group="startScore"><button data-value="301">301</button><button data-value="501" class="selected">501</button></div></div>
+          <div class="rule-block"><label>IN</label><div class="segmented" data-group="inRule"><button data-value="single" class="selected">Single In</button><button data-value="master">Master In</button></div></div>
+          <div class="rule-block"><label>OUT</label><div class="segmented" data-group="outRule"><button data-value="single">Single Out</button><button data-value="double" class="selected">Double Out</button><button data-value="master">Master Out</button></div></div>
+        </div>
+        <div class="panel"><h2>Visning / lagring</h2>
+          <label class="check"><input type="checkbox" id="showCheckout" checked> Vis checkout-forslag</label>
+          <label class="check"><input type="checkbox" id="showAverage" checked> Vis gjennomsnitt</label>
+          <label class="check"><input type="checkbox" id="saveThrows" checked> Lagre alle kast</label>
+          <label class="check"><input type="checkbox" id="showDailyHigh" checked> Vis dagens høyeste 3-pils kast</label>
+          <div class="row"><button id="startBtn" class="btn primary">START SPILL</button><button id="openHistoryBtnSetup" class="btn ghost">HISTORIKK</button></div>
+        </div>
+      </div>
+    </section>
+    <section id="game" class="screen game-screen hidden">
+      <header class="topbar"><div><h1>DART SCORE</h1><p id="matchTitle">501 · Single In · Double Out</p></div><div class="top-stats"><div>DAGENS HØYESTE<strong id="dailyHigh">0</strong></div><div>SISTE KAST<strong id="lastThrow">–</strong></div><div>CHECKOUT<strong id="checkoutSuggestion">–</strong></div></div><button id="historyBtn" class="btn ghost">HISTORIKK</button><button id="newGameBtn" class="btn ghost">NYTT</button></header>
+      <section id="scoreboardPlayers" class="scoreboard-grid"></section>
+      <section class="play-zone"><aside class="active-panel"><span>AKTIV SPILLER</span><h2 id="activeName">–</h2><div id="activeScore" class="active-score">501</div><div id="dartRow" class="dart-row"><div>PIL 1<b>–</b></div><div>PIL 2<b>–</b></div><div>PIL 3<b>–</b></div></div><div class="side-actions"><button id="undoBtn">ANGRE KAST</button><button id="yellowBtn">🟨 GULT</button><button id="helmetBtn">⛑ HJELM</button></div></aside><section class="score-input"><div class="modifier-row"><button id="doubleBtn" class="modifier">D</button><button id="tripleBtn" class="modifier">T</button><button id="missBtn" class="modifier miss">M</button><div id="modeLabel" class="mode-label">Single</div></div><div id="numberGrid" class="number-grid"></div></section><aside class="side-history"><h3>KASTLOGG</h3><div id="historyLog" class="history-log"></div></aside></section>
+    </section>
+    <section id="historyScreen" class="screen history-screen hidden">
+      <header class="topbar"><div><h1>HISTORIKK</h1><p id="historySubtitle">Alle spill og kast · versjon med angre kast</p></div><div class="row"><button id="exportCsvBtn" class="btn primary">EKSPORTER CSV</button><button id="importSeedBtn" class="btn ghost">LAST INN EXCEL-DATA</button><button id="clearHistoryBtn" class="btn danger">NULLSTILL</button><button id="backBtn" class="btn ghost">TILBAKE</button></div></header>
+      <div class="history-layout"><aside class="panel"><h2>Kamper</h2><div class="history-filter"><input id="historySearch" placeholder="Søk spiller/kamp" /></div><div id="matchList" class="match-list"></div></aside><section class="panel detail-panel"><h2 id="detailTitle">Velg kamp</h2><div id="detailStats" class="detail-stats"></div><div id="throwTable" class="throw-table"></div></section><aside class="panel"><h2>Spillerstatistikk</h2><div id="playerStats" class="player-stats"></div></aside></div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
