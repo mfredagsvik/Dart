@@ -1,112 +1,44 @@
-const $=s=>document.querySelector(s);const $$=s=>Array.from(document.querySelectorAll(s));
-let settings={startScore:501,inRule:'single',outRule:'double',showCheckout:true,showAverage:true,saveThrows:true,showDailyHigh:true};
-let players=['Marius','Dag Arne'];let game=null;let selectedMult='S';let dartBuffer=[];let liveLog=[];let allHistory=[];let selectedMatchId=null;const STORE='dartScoreHistoryV22';
-function clone(obj){return JSON.parse(JSON.stringify(obj))}
-const checkout={170:'T20 T20 Bull',167:'T20 T19 Bull',164:'T20 T18 Bull',161:'T20 T17 Bull',160:'T20 T20 D20',158:'T20 T20 D19',157:'T20 T19 D20',156:'T20 T20 D18',155:'T20 T19 D19',154:'T20 T18 D20',153:'T20 T19 D18',152:'T20 T20 D16',151:'T20 T17 D20',150:'T20 T18 D18',149:'T20 T19 D16',148:'T20 T20 D14',147:'T20 T17 D18',146:'T20 T18 D16',145:'T20 T15 D20',144:'T20 T20 D12',143:'T20 T17 D16',142:'T20 T14 D20',141:'T20 T19 D12',140:'T20 T20 D10',139:'T19 T14 D20',138:'T20 T18 D12',137:'T20 T19 D10',136:'T20 T20 D8',135:'T20 T17 D12',134:'T20 T14 D16',133:'T20 T19 D8',132:'Bull Bull D16',131:'T20 T13 D16',130:'T20 T18 D8',129:'T19 T16 D12',128:'T18 T18 D10',127:'T20 T17 D8',126:'T19 T19 D6',125:'Bull T17 D12',124:'T20 T16 D8',123:'T19 T16 D9',122:'T18 T18 D7',121:'T20 T11 D14',120:'T20 20 D20'};
-function loadStore(){try{allHistory=JSON.parse(localStorage.getItem(STORE)||localStorage.getItem('dartScoreHistoryV21')||'[]')}catch(e){allHistory=[]}}function saveStore(){localStorage.setItem(STORE,JSON.stringify(allHistory))}loadStore();
-async function loadImported(){let res=await fetch('imported-history.json');let rows=await res.json();let existing=new Set(allHistory.map(r=>`${r.matchId}|${r.round}|${r.player}|${r.allDarts||r.darts?.join(';')}`));let add=rows.filter(r=>!existing.has(`${r.matchId}|${r.round}|${r.player}|${r.allDarts}`)).map(r=>({...r,source:'Excel',timestamp:parseDateFromTitle(r.title)?.toISOString()||'',start:null,end:r.remaining,score:r.sum,darts:[r.dart1,r.dart2,r.dart3],bust:false,win:false}));allHistory=allHistory.concat(add);saveStore();renderHistoryScreen();alert(`Lastet inn ${add.length} historikkrader fra Excel-data.`)}
-function parseDateFromTitle(t){let m=String(t||'').match(/(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);if(!m)return null;return new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5])}
-function renderPlayersList(){const list=$('#playersList');list.innerHTML='';players.forEach((p,i)=>{let el=document.createElement('div');el.className='player-chip';el.innerHTML=`<span>${p}</span><button data-i="${i}">Fjern</button>`;list.appendChild(el)});list.querySelectorAll('button').forEach(b=>b.onclick=()=>{if(players.length>2){players.splice(+b.dataset.i,1);renderPlayersList()}})}
-$('#addPlayerBtn').onclick=()=>{let n=$('#playerName').value.trim();if(n&&players.length<8){players.push(n);$('#playerName').value='';renderPlayersList()}};$('#playerName').addEventListener('keydown',e=>{if(e.key==='Enter')$('#addPlayerBtn').click()});
-$$('.segmented button').forEach(btn=>btn.onclick=()=>{let group=btn.parentElement.dataset.group;btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');settings[group]=group==='startScore'?+btn.dataset.value:btn.dataset.value});
-$('#startBtn').onclick=startGame;$('#newGameBtn').onclick=()=>{if(confirm('Starte nytt spill?')){$('#game').classList.add('hidden');$('#setup').classList.remove('hidden')}};$('#historyBtn').onclick=openHistory;$('#openHistoryBtnSetup').onclick=openHistory;$('#backBtn').onclick=()=>{ $('#historyScreen').classList.add('hidden'); (game?$('#game'):$('#setup')).classList.remove('hidden');};$('#importSeedBtn').onclick=loadImported;$('#exportCsvBtn').onclick=exportCSV;$('#clearHistoryBtn').onclick=()=>{if(confirm('Slette all lokal historikk?')){allHistory=[];saveStore();renderHistoryScreen()}};$('#historySearch').oninput=renderHistoryScreen;
-function startGame(){settings.showCheckout=$('#showCheckout').checked;settings.showAverage=$('#showAverage').checked;settings.saveThrows=$('#saveThrows').checked;settings.showDailyHigh=$('#showDailyHigh').checked;game={id:String(Date.now()).slice(-6),active:0,over:false,created:new Date().toISOString(),players:players.map(n=>({name:n,score:settings.startScore,in:false,darts:0,totalScored:0,throws:[],yellow:0,helmet:0,winner:false}))};liveLog=[];dartBuffer=[];selectedMult='S';$('#setup').classList.add('hidden');$('#game').classList.remove('hidden');buildNumberGrid();updateAll()}
-function buildNumberGrid(){const grid=$('#numberGrid');grid.innerHTML='';[20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,25].forEach(n=>{let b=document.createElement('button');b.textContent=n;b.className=[20,19,18,25].includes(n)?'hot':'';b.onclick=()=>hit(n);grid.appendChild(b)})}
-$('#doubleBtn').onclick=()=>toggleMult('D');$('#tripleBtn').onclick=()=>toggleMult('T');$('#missBtn').onclick=()=>miss();function toggleMult(m){selectedMult=selectedMult===m?'S':m;updateMode()}function updateMode(){$('#doubleBtn').classList.toggle('selected',selectedMult==='D');$('#tripleBtn').classList.toggle('selected',selectedMult==='T');$('#modeLabel').textContent=selectedMult==='S'?'Single':selectedMult==='D'?'Dobbel':'Trippel'}
-function value(mult,num){if(mult==='M')return 0;if(num===25&&mult==='T')return 25;if(num===25&&mult==='D')return 50;return (mult==='D'?2:mult==='T'?3:1)*num}function label(d){return d.mult==='M'?'M':`${d.mult}${d.num}`}
-function hit(num){addDart({mult:selectedMult,num,raw:value(selectedMult,num)});selectedMult='S';updateMode()}function miss(){addDart({mult:'M',num:0,raw:0});selectedMult='S';updateMode()}
-function addDart(d){if(game.over)return;dartBuffer.push(d);updateDartRow();if(dartBuffer.length===3)commitThrow()}
-function effectiveThrow(p,buf){let opened=p.in||settings.inRule==='single';let sum=0;let effective=[];let opens=false;for(const d of buf){let raw=d.raw;if(!opened&&settings.inRule==='master'){if(d.mult==='D'||d.mult==='T'){opened=true;opens=true;sum+=raw;effective.push({...d,score:raw})}else{effective.push({...d,score:0})}}else{sum+=raw;effective.push({...d,score:raw})}}return{sum,effective,opens}}
-function validOut(lastDart){if(settings.outRule==='single')return true;if(!lastDart)return false;if(settings.outRule==='double')return lastDart.mult==='D';if(settings.outRule==='master')return lastDart.mult==='D'||lastDart.mult==='T';return false}
-function commitThrow(){
-  let activeBefore=game.active;
-  let p=game.players[activeBefore];
-  let playerBefore=clone(p);
-  let start=p.score;
-  let res=effectiveThrow(p,dartBuffer);
-  let end=start-res.sum;
-  let bust=false;
-  let win=false;
-  if(end<0)bust=true;
-  if(end===1&&settings.outRule!=='single')bust=true;
-  if(end===0){
-    let scoring=res.effective.filter(d=>d.score>0);
-    let last=scoring[scoring.length-1];
-    if(validOut(last))win=true;else bust=true;
-  }
-  if(!bust){
-    p.score=end;
-    p.totalScored+=res.sum;
-    p.darts+=3;
-    if(res.opens)p.in=true;
-    if(settings.inRule==='single')p.in=true;
-  }else{
-    p.darts+=3;
-  }
-  const throwId=`${game.id}-${activeBefore}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-  let throwObj={
-    throwId,
-    matchId:game.id,
-    round:p.throws.length+1,
-    player:p.name,
-    playerIndex:activeBefore,
-    start,
-    score:bust?0:res.sum,
-    rawScore:res.sum,
-    end:bust?start:p.score,
-    remaining:bust?start:p.score,
-    bust,
-    win,
-    darts:res.effective.map(d=>`${label(d)}=${d.score}`),
-    dart1:res.effective[0]?label(res.effective[0]):'',
-    dart2:res.effective[1]?label(res.effective[1]):'',
-    dart3:res.effective[2]?label(res.effective[2]):'',
-    allDarts:res.effective.map(label).join(';'),
-    helmet:p.helmet,
-    yellow:p.yellow,
-    timestamp:new Date().toISOString(),
-    rules:`${settings.startScore} ${settings.inRule} in / ${settings.outRule} out`,
-    undoState:{activeBefore,playerBefore,gameOverBefore:false}
-  };
-  p.throws.push(throwObj);
-  if(settings.saveThrows){
-    liveLog.unshift(throwObj);
-    allHistory.push(throwObj);
-    saveStore();
-  }
-  if(win){p.winner=true;game.over=true}
-  dartBuffer=[];
-  if(!game.over)game.active=(game.active+1)%game.players.length;
-  updateAll();
-}
-function undoLastThrow(){
-  if(!game)return;
-  if(dartBuffer.length){dartBuffer.pop();updateDartRow();return;}
-  const last=liveLog[0];
-  if(!last){alert('Ingen kast å angre.');return;}
-  if(!last.undoState){alert('Dette kastet kan ikke angres fordi det ble importert fra gammel historikk.');return;}
-  const idx=last.undoState.activeBefore;
-  game.players[idx]=clone(last.undoState.playerBefore);
-  game.active=idx;
-  game.over=false;
-  game.players.forEach(pl=>{ if(pl.name!==game.players[idx].name || idx!==game.players.indexOf(pl)) pl.winner=false; });
-  liveLog.shift();
-  const pos=allHistory.findIndex(r=>r.throwId===last.throwId);
-  if(pos>=0){allHistory.splice(pos,1);saveStore();}
-  dartBuffer=[];
-  selectedMult='S';
-  updateAll();
-}
-function updateAll(){updateMode();updateHeader();renderScoreboard();updateActive();renderLiveLog();updateDartRow()}function updateHeader(){let inText=settings.inRule==='master'?'Master In':'Single In';let outText=settings.outRule==='double'?'Double Out':settings.outRule==='master'?'Master Out':'Single Out';$('#matchTitle').textContent=`${settings.startScore} · ${inText} · ${outText}`;let today=new Date().toISOString().slice(0,10);let highs=allHistory.filter(r=>(r.timestamp||'').slice(0,10)===today).map(r=>+r.score||+r.sum||0);let high=Math.max(0,...highs,...liveLog.map(t=>t.score||0));$('#dailyHigh').textContent=settings.showDailyHigh?high:'–';$('#lastThrow').textContent=liveLog[0]?`${liveLog[0].player}: ${liveLog[0].score}`:'–';let p=game.players[game.active];$('#checkoutSuggestion').textContent=settings.showCheckout?(checkout[p.score]||'–'):'–'}function avg(p){return p.darts?((p.totalScored/p.darts)*3).toFixed(1):'0.0'}
-function renderScoreboard(){let wrap=$('#scoreboardPlayers');wrap.innerHTML='';game.players.forEach((p,i)=>{let card=document.createElement('div');card.className='score-card '+(i===game.active?'active ':'')+(p.winner?'winner':'');card.innerHTML=`<div class="badges"><span class="badge">🟨 ${p.yellow}</span><span class="badge">⛑ ${p.helmet}</span></div><h3>${p.name}</h3><div class="remaining">${p.score}</div><div class="meta"><div>AVG<strong>${settings.showAverage?avg(p):'–'}</strong></div><div>IN<strong>${p.in||settings.inRule==='single'?'JA':'NEI'}</strong></div><div>KAST<strong>${p.throws.length}</strong></div></div>`;wrap.appendChild(card)})}
-function updateActive(){let p=game.players[game.active];$('#activeName').textContent=p.name;$('#activeScore').textContent=p.score}function updateDartRow(){let cells=$$('#dartRow div b');cells.forEach((c,i)=>{let d=dartBuffer[i];c.textContent=d?label(d):'–'})}
-function renderLiveLog(){let h=$('#historyLog');h.innerHTML='';liveLog.slice(0,18).forEach(t=>{let el=document.createElement('div');el.className='log-item';el.innerHTML=`<strong>${t.player}</strong> ${t.bust?'BUST':t.score} <br>${(t.darts||[]).join(' · ')} <br>${t.start??''} → ${t.end??t.remaining}`;h.appendChild(el)})}
-$('#undoBtn').onclick=undoLastThrow;$('#yellowBtn').onclick=()=>{game.players[game.active].yellow++;updateAll()};$('#helmetBtn').onclick=()=>{game.players[game.active].helmet++;updateAll()};
-function openHistory(){if(game)$('#game').classList.add('hidden');else $('#setup').classList.add('hidden');$('#historyScreen').classList.remove('hidden');renderHistoryScreen()}
-function groupMatches(){let map=new Map();for(const r of allHistory){let id=String(r.matchId||'Ukjent');if(!map.has(id))map.set(id,{id,rows:[],players:new Set(),date:r.timestamp||parseDateFromTitle(r.title)?.toISOString()||''});let m=map.get(id);m.rows.push(r);if(r.player)m.players.add(r.player);if(!m.date&&(r.timestamp||r.title))m.date=r.timestamp||parseDateFromTitle(r.title)?.toISOString()||''}return [...map.values()].sort((a,b)=>(b.date||'').localeCompare(a.date||''))}
-function renderHistoryScreen(){let q=($('#historySearch')?.value||'').toLowerCase();let matches=groupMatches().filter(m=>!q||m.id.toLowerCase().includes(q)||[...m.players].join(' ').toLowerCase().includes(q));let ml=$('#matchList');ml.innerHTML='';matches.forEach((m,i)=>{if(!selectedMatchId&&i===0)selectedMatchId=m.id;let item=document.createElement('div');item.className='match-item '+(m.id===selectedMatchId?'active':'');let max=Math.max(...m.rows.map(r=>+r.score||+r.sum||0),0);item.innerHTML=`<b>Kamp ${m.id}</b><small>${fmtDate(m.date)} · ${m.players.size} spillere · ${m.rows.length} kast</small><small>Høyeste kast: ${max}</small>`;item.onclick=()=>{selectedMatchId=m.id;renderHistoryScreen()};ml.appendChild(item)});let selected=matches.find(m=>m.id===selectedMatchId)||matches[0];renderDetail(selected);renderPlayerStats()}
-function fmtDate(s){if(!s)return 'Ukjent dato';let d=new Date(s);return isNaN(d)?s:d.toLocaleString('no-NO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})}
-function renderDetail(m){let title=$('#detailTitle'),stats=$('#detailStats'),tbl=$('#throwTable');if(!m){title.textContent='Ingen historikk';stats.innerHTML='';tbl.innerHTML='';return}title.textContent=`Kamp ${m.id}`;let rows=m.rows.slice().sort((a,b)=>(+a.round||0)-(+b.round||0)||String(a.player).localeCompare(String(b.player)));let high=Math.max(...rows.map(r=>+r.score||+r.sum||0),0);let winner=rows.find(r=>r.win)?.player||'';let avg=(rows.reduce((s,r)=>s+(+r.score||+r.sum||0),0)/Math.max(1,rows.length)).toFixed(1);stats.innerHTML=`<div class="statbox">Spillere<strong>${m.players.size}</strong></div><div class="statbox">Kast<strong>${rows.length}</strong></div><div class="statbox">Høyeste<strong>${high}</strong></div><div class="statbox">Snitt/kast<strong>${avg}</strong></div><div class="statbox">Vinner<strong>${winner||'–'}</strong></div>`;tbl.innerHTML='<table><thead><tr><th>Runde</th><th>Spiller</th><th>Pil 1</th><th>Pil 2</th><th>Pil 3</th><th>Sum</th><th>Igjen</th><th>Gult</th><th>Hjelm</th></tr></thead><tbody>'+rows.map(r=>`<tr><td>${r.round||''}</td><td>${r.player||''}</td><td>${r.dart1||''}</td><td>${r.dart2||''}</td><td>${r.dart3||''}</td><td>${r.score??r.sum??''}</td><td>${r.remaining??r.end??''}</td><td>${r.yellow||''}</td><td>${r.helmet||''}</td></tr>`).join('')+'</tbody></table>'}
-function renderPlayerStats(){let by={};allHistory.forEach(r=>{let p=r.player||'Ukjent';by[p]??={throws:0,total:0,high:0,n180:0,n140:0,n100:0,yellow:0,helmet:0};let s=+r.score||+r.sum||0;by[p].throws++;by[p].total+=s;by[p].high=Math.max(by[p].high,s);if(s>=180)by[p].n180++;if(s>=140)by[p].n140++;if(s>=100)by[p].n100++;by[p].yellow+=+r.yellow||0;by[p].helmet+=+r.helmet||0});let html=Object.entries(by).sort((a,b)=>b[1].high-a[1].high).map(([p,s])=>`<div class="player-stat"><b>${p}</b><div class="mini"><span>Kast: ${s.throws}</span><span>Avg: ${(s.total/Math.max(1,s.throws)).toFixed(1)}</span><span>Høyeste: ${s.high}</span><span>180: ${s.n180}</span><span>140+: ${s.n140}</span><span>100+: ${s.n100}</span><span>Gult: ${s.yellow}</span><span>Hjelm: ${s.helmet}</span></div></div>`).join('');$('#playerStats').innerHTML=html||'<p class="hint">Ingen data ennå.</p>'}
-function exportCSV(){let cols=['matchId','timestamp','round','player','dart1','dart2','dart3','score','remaining','bust','win','yellow','helmet','rules','source'];let csv=[cols.join(';')].concat(allHistory.map(r=>cols.map(c=>`"${String(r[c]??'').replaceAll('"','""')}"`).join(';'))).join('\n');let blob=new Blob([csv],{type:'text/csv;charset=utf-8'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dart-score-historikk.csv';a.click();URL.revokeObjectURL(a.href)}
-renderPlayersList();if('serviceWorker'in navigator)navigator.serviceWorker.register('service-worker.js');
+const STORAGE_KEY='dartscore_v3_state';
+const HISTORY_KEY='dartscore_v3_history';
+let state={gameType:501,inRule:'master',outRule:'double',options:{checkout:true,average:true,saveThrows:true,dailyHigh:true},players:[],active:0,turn:[],modifier:null,gameId:null,startedAt:null,finished:false};
+let history=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');
+const $=id=>document.getElementById(id);
+function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));localStorage.setItem(HISTORY_KEY,JSON.stringify(history));}
+function load(){const s=localStorage.getItem(STORAGE_KEY);if(s){try{state=JSON.parse(s)}catch{}} if(!state.players?.length) startGame(['Marius','Dag Arne'],501,'master','double',false);}
+function playerTemplate(name){return{name,score:Number(state.gameType),in:false,darts:0,totalScore:0,throws:0,high:0,n180:0,n140:0,n100:0,yellow:0,helmet:0,winner:false};}
+function startGame(names,gameType,inRule,outRule,doSave=true){state.gameType=Number(gameType);state.inRule=inRule;state.outRule=outRule;state.players=names.slice(0,8).map(n=>playerTemplate(n.trim())).filter(p=>p.name);if(state.players.length<2)state.players=[playerTemplate('Spiller 1'),playerTemplate('Spiller 2')];state.active=0;state.turn=[];state.modifier=null;state.gameId='K'+Date.now();state.startedAt=new Date().toISOString();state.finished=false;if(doSave)save();render();}
+function dartValue(mult,num){if(mult==='M')return 0;const m=mult==='D'?2:mult==='T'?3:1;return m*num;}
+function dartLabel(mult,num,score){if(mult==='M')return 'M';return `${mult||'S'}${num}${score===0?'=0':''}`;}
+function isOpening(d){return d.mult==='D'||d.mult==='T';}
+function isValidOut(d){if(state.outRule==='single')return true;if(state.outRule==='double')return d.mult==='D' && d.num!==25;if(state.outRule==='master')return d.mult==='D'||d.mult==='T';return false;}
+function addDart(num){if(state.finished)return;let p=state.players[state.active];let mult=state.modifier||'S';if(num==='M'){mult='M';num=0} let raw=dartValue(mult,num);let score=raw;
+ if(state.inRule==='master'&&!p.in){ if(isOpening({mult,num})){p.in=true}else{score=0} }
+ state.turn.push({mult,num,score,raw,label:dartLabel(mult,num,score),scoreBefore:p.score});state.modifier=null;
+ if(state.turn.length===3) commitTurn(); render(); save();}
+function commitTurn(){let p=state.players[state.active];const before=p.score;const total=state.turn.reduce((a,d)=>a+d.score,0);const after=before-total;const last=state.turn[state.turn.length-1];let bust=false,win=false;
+ if(after<0 || after===1){bust=true}
+ else if(after===0){ if(isValidOut(last)){win=true}else bust=true }
+ if(!bust){p.score=after;p.totalScore+=total;p.darts+=state.turn.length;p.throws++;p.high=Math.max(p.high,total);if(total===180)p.n180++;if(total>=140)p.n140++;if(total>=100)p.n100++; if(win){p.winner=true;state.finished=true}}
+ const record={gameId:state.gameId,ts:new Date().toISOString(),player:p.name,roundNo:history.filter(h=>h.gameId===state.gameId&&h.player===p.name).length+1,darts:state.turn.map(d=>d.label),sum:bust?0:total,rawTotal:total,before,after:bust?before:p.score,bust,win,gameType:state.gameType,inRule:state.inRule,outRule:state.outRule,players:state.players.map(x=>x.name)};
+ if(state.options.saveThrows)history.push(record);
+ state.turn=[]; if(!state.finished)state.active=(state.active+1)%state.players.length;}
+function undoDart(){if(state.turn.length){const d=state.turn.pop();let p=state.players[state.active]; if(state.inRule==='master'&&p.in&&isOpening(d)){ const hasEarlierOpening=history.some(h=>h.gameId===state.gameId&&h.player===p.name&&h.darts.some(x=>/^D|^T/.test(x))); if(!hasEarlierOpening) p.in=false;} render();save();}}
+function undoThrow(){const rec=[...history].reverse().find(h=>h.gameId===state.gameId);if(!rec)return; const idx=history.lastIndexOf(rec);history.splice(idx,1);const p=state.players.find(x=>x.name===rec.player);if(p){p.score=rec.before;p.winner=false;state.finished=false;p.throws=Math.max(0,p.throws-1);p.darts=Math.max(0,p.darts-3);p.totalScore=Math.max(0,p.totalScore-(rec.bust?0:rec.sum));recalcPlayerStats(p)}state.active=state.players.findIndex(x=>x.name===rec.player);state.turn=[];render();save();}
+function recalcPlayerStats(p){const rs=history.filter(h=>h.gameId===state.gameId&&h.player===p.name);p.high=0;p.n180=0;p.n140=0;p.n100=0;p.in=state.inRule==='single';for(const r of rs){p.high=Math.max(p.high,r.sum);if(r.sum===180)p.n180++;if(r.sum>=140)p.n140++;if(r.sum>=100)p.n100++;if(r.darts.some(x=>/^D|^T/.test(x)))p.in=true}}
+function avg(p){return p.darts?((p.totalScore/p.darts)*3).toFixed(1):'0.0'}
+function checkout(score){const simple={170:'T20 T20 Bull',167:'T20 T19 Bull',164:'T20 T18 Bull',161:'T20 T17 Bull',160:'T20 T20 D20',158:'T20 T20 D19',157:'T20 T19 D20',156:'T20 T20 D18',155:'T20 T19 D19',154:'T20 T18 D20',153:'T20 T19 D18',152:'T20 T20 D16',151:'T20 T17 D20',150:'T20 T18 D18',140:'T20 T20 D10',120:'T20 20 D20',100:'T20 D20',80:'T20 D10',60:'20 D20',50:'Bull',40:'D20',32:'D16',24:'D12',16:'D8',8:'D4',4:'D2',2:'D1'};return simple[score]|| (score<=170?'Se egen checkout':'–');}
+function dailyHigh(){const today=new Date().toISOString().slice(0,10);const rows=history.filter(h=>h.ts.slice(0,10)===today);let best=rows.sort((a,b)=>b.sum-a.sum)[0];return best||null;}
+function setView(view){document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.view===view));document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$(view+'View').classList.add('active');if(view==='history')renderHistory();if(view==='stats')renderStats();}
+function render(){renderLabels();renderPlayers();renderActive();renderPad();}
+function renderLabels(){ $('gameTypeLabel').textContent=state.gameType; $('inRuleLabel').textContent=state.inRule==='master'?'Master In':'Single In'; $('outRuleLabel').textContent=state.outRule==='double'?'Double Out':state.outRule==='master'?'Master Out':'Single Out'; const best=dailyHigh(); $('dailyHigh').textContent=best?best.sum:0; $('dailyHighPlayer').textContent=best?best.player:'Ingen kast ennå';}
+function renderPlayers(){const grid=$('playersGrid');const n=state.players.length;grid.style.setProperty('--player-cols', n<=4?n:4);grid.innerHTML=state.players.map((p,i)=>`<div class="player-card ${i===state.active?'active':''}"><div class="player-top"><div class="player-name">${p.name}</div><div>${p.winner?'🏆':''}</div></div><div class="player-score">${p.score}</div><div class="player-meta"><div>Avg<strong>${avg(p)}</strong></div><div>180<strong>${p.n180}</strong></div><div>High<strong>${p.high}</strong></div><div>Gult<strong>${p.yellow}</strong></div><div>Hjelm<strong>${p.helmet}</strong></div><div>In<strong>${p.in?'Ja':'Nei'}</strong></div></div></div>`).join('');}
+function renderActive(){const p=state.players[state.active];$('activeName').textContent=p?.name||'–';$('activeScore').textContent=p?.score||0;$('turnDarts').textContent=[0,1,2].map(i=>`Pil ${i+1}: ${state.turn[i]?.label||'–'}`).join(' · ');$('turnTotal').textContent='Runde: '+state.turn.reduce((a,d)=>a+d.score,0);$('checkoutSuggestion').textContent=state.options.checkout&&p?checkout(p.score):'–';$('message').textContent=state.finished?'Kampen er ferdig. Start nytt spill eller angre kast.':(state.modifier?`${state.modifier} er valgt. Trykk tall eller trykk ${state.modifier} igjen for å slå av.`:'Trykk tall direkte for single. D/T kan slås av og på.');}
+function renderPad(){const pad=$('numberPad');const nums=[25,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1];pad.innerHTML=nums.map(n=>`<button class="num-btn ${n>=20?'hot':''}" data-num="${n}">${n}</button>`).join('');$('doubleBtn').classList.toggle('active',state.modifier==='D');$('tripleBtn').classList.toggle('active',state.modifier==='T');}
+function renderHistory(){const games=[...new Set(history.map(h=>h.gameId))].reverse();$('historyList').innerHTML=games.map(g=>{const rows=history.filter(h=>h.gameId===g);const last=rows[rows.length-1];const winner=rows.find(r=>r.win)?.player||'–';return `<div class="game-item" data-game="${g}"><strong>${g}</strong><br>${new Date(rows[0].ts).toLocaleString('no-NO')}<br>Vinner: ${winner}<br>Kast: ${rows.length}</div>`}).join('')||'Ingen historikk ennå.';document.querySelectorAll('.game-item').forEach(el=>el.onclick=()=>showGameDetail(el.dataset.game));}
+function showGameDetail(gameId){const rows=history.filter(h=>h.gameId===gameId);$('historyDetail').innerHTML=`<h2>${gameId}</h2><table class="throw-table"><thead><tr><th>Tid</th><th>Spiller</th><th>Piler</th><th>Sum</th><th>Før</th><th>Etter</th><th>Status</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${new Date(r.ts).toLocaleTimeString('no-NO')}</td><td>${r.player}</td><td>${r.darts.join(' · ')}</td><td>${r.sum}</td><td>${r.before}</td><td>${r.after}</td><td>${r.win?'Vinn':r.bust?'Bust':''}</td></tr>`).join('')}</tbody></table>`;}
+function renderStats(){const names=[...new Set(history.map(h=>h.player))];$('statsGrid').innerHTML=names.map(name=>{const rs=history.filter(h=>h.player===name);const total=rs.reduce((a,r)=>a+r.sum,0);const darts=rs.length*3;const high=Math.max(0,...rs.map(r=>r.sum));return `<div class="stat-card"><h2>${name}</h2><div class="stat-line"><span>Average</span><strong>${darts?((total/darts)*3).toFixed(1):'0.0'}</strong></div><div class="stat-line"><span>Høyeste kast</span><strong>${high}</strong></div><div class="stat-line"><span>180</span><strong>${rs.filter(r=>r.sum===180).length}</strong></div><div class="stat-line"><span>140+</span><strong>${rs.filter(r=>r.sum>=140).length}</strong></div><div class="stat-line"><span>100+</span><strong>${rs.filter(r=>r.sum>=100).length}</strong></div><div class="stat-line"><span>Vinn</span><strong>${rs.filter(r=>r.win).length}</strong></div></div>`}).join('')||'Ingen statistikk ennå.';}
+function exportCsv(){const header=['gameId','tid','spiller','piler','sum','score_for','score_etter','bust','vinner','spilltype','in','out'];const rows=history.map(r=>[r.gameId,r.ts,r.player,r.darts.join(' '),r.sum,r.before,r.after,r.bust,r.win,r.gameType,r.inRule,r.outRule]);const csv=[header,...rows].map(r=>r.map(v=>`"${String(v).replaceAll('"','""')}"`).join(';')).join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='dart-score-historikk.csv';a.click();}
+document.addEventListener('click',e=>{const b=e.target.closest('button'); if(!b)return; if(b.classList.contains('tab'))setView(b.dataset.view); if(b.dataset.num)addDart(Number(b.dataset.num));});
+$('doubleBtn').onclick=()=>{state.modifier=state.modifier==='D'?null:'D';render();};$('tripleBtn').onclick=()=>{state.modifier=state.modifier==='T'?null:'T';render();};$('missBtn').onclick=()=>addDart('M');$('undoDartBtn').onclick=undoDart;$('undoThrowBtn').onclick=undoThrow;$('newGameBtn').onclick=()=>setView('setup');$('yellowBtn').onclick=()=>{state.players[state.active].yellow++;render();save();};$('helmetBtn').onclick=()=>{state.players[state.active].helmet++;render();save();};$('startGameBtn').onclick=()=>{const names=$('playersInput').value.split('\n').map(x=>x.trim()).filter(Boolean);startGame(names,document.querySelector('input[name="gameType"]:checked').value,document.querySelector('input[name="inRule"]:checked').value,document.querySelector('input[name="outRule"]:checked').value);setView('game');};$('exportCsvBtn').onclick=exportCsv;$('clearHistoryBtn').onclick=()=>{if(confirm('Nullstille all historikk?')){history=[];save();renderHistory();renderStats();render();}};
+if('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');
+load();render();
