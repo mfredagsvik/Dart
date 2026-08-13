@@ -1,0 +1,82 @@
+/* DART SCORE v17 – 3440×1440 ultrawide enhancement */
+@media (min-width: 2400px) and (min-height: 1200px) {
+  #game {
+    grid-template-rows: 74px 250px minmax(0, 1fr) 410px;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .top {
+    border-radius: 18px;
+    padding: 0 22px;
+  }
+  .logo { font-size: 30px; }
+  .sub { font-size: 14px; }
+  .title { font-size: 38px; }
+  nav { gap: 10px; }
+  nav button { padding: 13px 18px; font-size: 16px; border-radius: 13px; }
+
+  .players {
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 12px;
+  }
+  .player {
+    border-radius: 20px;
+    padding: 15px 18px;
+  }
+  .player.active:before { font-size: 15px; padding: 6px 13px; }
+  .pname { font-size: 29px; }
+  .proast { font-size: 17px; }
+  .pscore { font-size: 112px; }
+  .pstats { font-size: 13px; gap: 7px; }
+  .pstats b { font-size: 20px; }
+
+  .mid {
+    grid-template-columns: 390px minmax(0, 1fr) 210px;
+    gap: 12px;
+  }
+  .roast, .board, .side { border-radius: 20px; }
+  .roast { padding: 22px; }
+  .roast h3 { font-size: 18px; }
+  .rmain { font-size: 36px; margin-top: 18px; }
+  .rsub { font-size: 19px; margin-top: 12px; }
+
+  .board { grid-template-columns: 390px minmax(0, 1fr); }
+  .active { padding: 24px; }
+  .active small { font-size: 16px; }
+  .aname { font-size: 42px; margin: 9px 0; }
+  .ascore { font-size: 126px; }
+  .active p { font-size: 18px; margin: 8px 0; }
+  .status { font-size: 19px; min-height: 25px; }
+
+  .darts { grid-template-rows: 1fr 80px; padding: 16px; }
+  .dartcards { gap: 12px; }
+  .dart h4 { font-size: 19px; }
+  .dot { width: 15px; height: 15px; margin: 10px; }
+  .dval { font-size: 72px; }
+  .dlab { font-size: 27px; }
+  .live small { font-size: 14px; }
+  .live b { font-size: 42px; }
+  .live span { font-size: 18px; }
+
+  .side > div, .side > button { padding: 16px; }
+  .side small { font-size: 14px; }
+  .side b { font-size: 38px; margin-top: 7px; }
+
+  .keypad {
+    grid-template-columns: 190px minmax(0, 1fr) 220px;
+    gap: 12px;
+  }
+  .mods { gap: 12px; }
+  .mods button, .numbers button, .triple { border-radius: 19px; }
+  .double, .miss { font-size: 78px; }
+  .triple { font-size: 92px; }
+  .numbers { gap: 10px; }
+  .numbers button { font-size: 49px; }
+}
+
+/* 1920×1200 / tablet remains close to v16, but allow a little more flexibility. */
+@media (max-width: 2399px) {
+  .numbers button { min-width: 0; }
+  .player, .board, .roast, .side { min-width: 0; }
+}
