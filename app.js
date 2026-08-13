@@ -4,7 +4,101 @@ function newPlayer(name,score=501,inRule='master'){return{name,score,inOpen:inRu
 function defaultState(){return{startScore:501,inRule:'master',outRule:'master',active:0,selected:null,current:[],throws:[],games:[],known:[...DEFAULT_NAMES],allPlayers:{},players:DEFAULT_NAMES.map(n=>newPlayer(n,501,'master')),dailyHigh:0,totalThrows:0,message:'',roastMain:'Klar.',roastSub:'Ingen slipper unna.',shootout:false,shootoutScores:{},shootoutDone:{},shootoutRound:0,settings:{roast:true,helmet:true,shootout:true},records:{highestThrow:{player:'-',score:0,date:'-'},highestCheckout:{player:'-',score:0,date:'-'},masterWorst:{player:'-',darts:0,date:'-'}}}}
 let state=JSON.parse(localStorage.getItem(STORE)||'null')||defaultState();
 function normalizePlayer(p){const base=newPlayer((p&&p.name)||'Spiller',state.startScore||501,state.inRule||'master');const out=Object.assign(base,p||{});out.hits=out.hits||freshHits();out.hitDetail=out.hitDetail||freshHitDetail();out.todayHits=out.todayHits||freshHits();out.todayHitDetail=out.todayHitDetail||freshHitDetail();out.masterHistory=out.masterHistory||[];return out}
-function syncPlayersToDB(){state.allPlayers=state.allPlayers||{};(state.players||[]).forEach(p=>state.allPlayers[p.name]=normalizePlayer(p))}function getAllPlayerNames(){syncPlayersToDB();return[...new Set([...(state.known||[]),...Object.keys(state.allPlayers),...(state.players||[]).map(p=>p.name),...(state.throws||[]).map(t=>t.player)])]}function getAllPlayerList(){return getAllPlayerNames().map(n=>state.allPlayers[n]||newPlayer(n,state.startScore||501,state.inRule||'master'))}function save(){syncPlayersToDB();localStorage.setItem(STORE,JSON.stringify(state))}
+function syncPlayersToDB(){state.allPlayers=state.allPlayers||{};(state.players||[]).forEach(p=>state.allPlayers[p.name]=normalizePlayer(p))}
+function getAllPlayerNames(){syncPlayersToDB();return[...new Set([...(state.known||[]),...Object.keys(state.allPlayers),...(state.players||[]).map(p=>p.name),...(state.throws||[]).map(t=>t.player)])]}
+function getAllPlayerList(){return getAllPlayerNames().map(n=>state.allPlayers[n]||newPlayer(n,state.startScore||501,state.inRule||'master'))}
+
+/* ===== DART SCORE v17 CLOUD / NEON =====
+   Neon er "source of truth" når det finnes data i skyen.
+   localStorage beholdes som lokal/offline backup.
+*/
+let cloudSaveTimer=null;
+let cloudReady=false;
+let cloudSaving=false;
+let cloudSaveQueued=false;
+
+async function loadCloudState(){
+  try{
+    const response=await fetch('/api/state',{method:'GET',cache:'no-store'});
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+
+    const data=await response.json();
+    const cloudState=data&&data.ok&&data.state&&typeof data.state==='object'
+      ? data.state
+      : null;
+
+    if(cloudState&&Object.keys(cloudState).length>0){
+      state=cloudState;
+      localStorage.setItem(STORE,JSON.stringify(state));
+      console.info('DART SCORE: state lastet fra Neon');
+      return true;
+    }
+
+    console.info('DART SCORE: Neon er tom – bruker lokal state og synkroniserer den opp');
+    return false;
+  }catch(error){
+    console.warn('DART SCORE: kunne ikke laste fra Neon. Bruker localStorage.',error);
+    return false;
+  }finally{
+    cloudReady=true;
+  }
+}
+
+async function saveCloudState(){
+  if(!cloudReady)return;
+
+  if(cloudSaving){
+    cloudSaveQueued=true;
+    return;
+  }
+
+  cloudSaving=true;
+  try{
+    const snapshot=JSON.parse(JSON.stringify(state));
+    const response=await fetch('/api/state',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({state:snapshot})
+    });
+
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+  }catch(error){
+    console.warn('DART SCORE: kunne ikke lagre til Neon. Lokal backup er fortsatt lagret.',error);
+  }finally{
+    cloudSaving=false;
+    if(cloudSaveQueued){
+      cloudSaveQueued=false;
+      saveCloudState();
+    }
+  }
+}
+
+function save(){
+  syncPlayersToDB();
+
+  // Lokal/offline backup – skjer umiddelbart.
+  localStorage.setItem(STORE,JSON.stringify(state));
+
+  // Sky-lagring – debounce hindrer unødvendige kall fra render().
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer=setTimeout(()=>{
+    if(cloudReady)saveCloudState();
+  },500);
+}
+
+async function resetCloudState(nextState){
+  try{
+    const response=await fetch('/api/state',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({state:nextState})
+    });
+    return response.ok;
+  }catch(error){
+    console.warn('DART SCORE: kunne ikke nullstille Neon-state.',error);
+    return false;
+  }
+}
 function ensure(){state.settings=state.settings||defaultState().settings;state.records=state.records||defaultState().records;state.known=state.known||[...DEFAULT_NAMES];state.allPlayers=state.allPlayers||{};state.players.forEach(p=>{p.hits=p.hits||freshHits();p.hitDetail=p.hitDetail||freshHitDetail();p.todayHits=p.todayHits||freshHits();p.todayHitDetail=p.todayHitDetail||freshHitDetail();p.masterHistory=p.masterHistory||[];p.hundredPlus=p.hundredPlus||0;p.weakSum=p.weakSum||0;p.yellow=p.yellow||0;p.helmetPending=p.helmetPending||0;p.pilesThrown=p.pilesThrown||0})}
 function pick(a){return a[Math.floor(Math.random()*a.length)]}function roast(cat,main,sub=''){if(!state.settings.roast){state.roastMain='';state.roastSub='';return}const arr=(window.ROAST_LIBRARY&&window.ROAST_LIBRARY[cat])||[];state.roastMain=main;state.roastSub=arr.length?pick(arr):sub}
 function showPage(id){document.getElementById('game').style.display='none';document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');if(id==='start')renderStart();if(id==='history')renderHistory();if(id==='profile')renderProfile();if(id==='settings')renderSettings()}function showGame(){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('game').style.display='grid';render()}
@@ -21,5 +115,33 @@ function enterShootout(){state.shootout=true;state.shootoutRound=1;state.shootou
 function undoThrow(){const t=state.throws.pop();if(!t)return;state.active=t.playerIndex;state.message='Kast angret';render()}function checkout(s){s=Number(s);if(!s||s<2||s>180)return '—';const hits=[];for(let n=1;n<=20;n++){hits.push({label:String(n),value:n,mod:'S'});hits.push({label:'D'+n,value:2*n,mod:'D'});hits.push({label:'T'+n,value:3*n,mod:'T'})}hits.push({label:'25',value:25,mod:'S'},{label:'Bull',value:50,mod:'D'});const ok=h=>state.outRule==='single'||(state.outRule==='double'&&h.mod==='D')||(state.outRule==='master'&&(h.mod==='D'||h.mod==='T'));const fin=hits.filter(ok);for(const a of fin)if(a.value===s)return a.label;for(const a of hits)for(const b of fin)if(a.value+b.value===s)return`${a.label} · ${b.label}`;for(const a of hits)for(const b of hits)for(const c of fin)if(a.value+b.value+c.value===s)return`${a.label} · ${b.label} · ${c.label}`;return '—'}function closeWinner(){document.getElementById('winnerModal').classList.remove('show')}function showWinner(name,helmets=[]){document.getElementById('winnerTitle').textContent=helmets.length?'🪖 HJELMALARM':'🏆 VINNER';document.getElementById('winnerText').textContent=helmets.length?`${helmets.map(p=>p.name).join(', ')} må ha hjelm!`:name;document.getElementById('winnerModal').classList.add('show')}function showBonusWinner(name,score){document.getElementById('winnerTitle').textContent='🏆 BONUSRUNDE-VINNER';document.getElementById('winnerText').textContent=`${name} vant med ${score}`;document.getElementById('winnerModal').classList.add('show')}
 function renderStart(){const names=getAllPlayerNames();document.getElementById('pickList').innerHTML=names.map(n=>`<label class="pick"><input type="checkbox" class="pickName" value="${n}" ${state.players.some(p=>p.name===n)?'checked':''}> ${n}</label>`).join('')}function addPlayerName(){const n=document.getElementById('newName').value.trim();if(n&&!state.known.includes(n))state.known.push(n);if(n&&!state.allPlayers[n])state.allPlayers[n]=newPlayer(n,state.startScore||501,state.inRule||'master');document.getElementById('newName').value='';save();renderStart()}function startGame(){syncPlayersToDB();const names=[...document.querySelectorAll('.pickName:checked')].map(x=>x.value);if(names.length<2)return alert('Velg minst 2 spillere');const oldAll=state.allPlayers,oldRecords=state.records,oldKnown=state.known,oldSettings=state.settings,oldThrows=state.throws,oldGames=state.games;state=defaultState();state.known=oldKnown;state.settings=oldSettings;state.records=oldRecords;state.throws=oldThrows;state.games=oldGames;state.allPlayers=oldAll;state.startScore=+document.getElementById('startScore').value;state.inRule=document.getElementById('inRule').value;state.outRule=document.getElementById('outRule').value;state.players=names.map(n=>{const prev=state.allPlayers[n];const p=newPlayer(n,state.startScore,state.inRule);if(prev){['hits','hitDetail','todayHits','todayHitDetail','helmet','helmetPending','yellow','hundredPlus','weakSum','gay','busts','wins','masterHistory','high','n180'].forEach(k=>p[k]=prev[k]||p[k])}return p});state.active=Math.floor(Math.random()*state.players.length);const starter=state.players[state.active]?.name||'';const helmets=state.players.filter(p=>(p.helmetPending||0)>0);let msg=starter?'Starter tilfeldig: '+starter:'';if(helmets.length){msg+=(msg?'\n':'')+'HJELM NESTE SPILL: '+helmets.map(p=>p.name).join(', ');helmets.forEach(p=>p.helmetPending=0)}if(msg)alert(msg);showGame()}
 function statsFor(p){return{avg:p.darts?((p.total/p.darts)*3).toFixed(1):'0.0',wins:p.wins||0,hundred:p.hundredPlus||0,weak:p.weakSum||0,gay:p.gay||0,helmet:p.helmet||0,high:p.high||0,worst:p.masterHistory.length?Math.max(...p.masterHistory):0,avgIn:avgMaster(p)?avgMaster(p).toFixed(1):'0.0'}}function fillPlayerSelect(selId,allText='Alle'){const sel=document.getElementById(selId);const old=sel.value;sel.innerHTML=`<option value="">${allText}</option>`+getAllPlayerList().map(p=>`<option value="${p.name}">${p.name}</option>`).join('');sel.value=[...sel.options].some(o=>o.value===old)?old:'';return sel.value}function renderHistory(){const selected=fillPlayerSelect('historyPlayer','Alle spillere');const allList=getAllPlayerList();const ps=selected?allList.filter(p=>p.name===selected):allList;document.getElementById('historyStats').innerHTML='<tr><th>Spiller</th><th>Seiere</th><th>Avg</th><th>High</th><th>100+</th><th>Svake</th><th>26</th><th>Snitt inn</th><th>Verst inn</th></tr>'+ps.map(p=>{const st=statsFor(p);return`<tr><td>${p.name}</td><td>${st.wins}</td><td>${st.avg}</td><td>${st.high}</td><td>${st.hundred}</td><td>${st.weak}</td><td>${st.gay}</td><td>${st.avgIn}</td><td>${st.worst}</td></tr>`}).join('');const rows=state.throws.filter(t=>!selected||t.player===selected).slice().reverse();document.getElementById('historyThrows').innerHTML='<tr><th>Tid</th><th>Spiller</th><th>Før</th><th>Kast</th><th>Sum</th><th>Etter</th><th>Status</th></tr>'+rows.map(t=>`<tr><td>${t.time}</td><td>${t.player}</td><td>${t.before}</td><td>${t.darts.map(d=>d.label).join(' | ')}</td><td>${t.sum}</td><td>${t.after}</td><td>${t.shootout?'Bonus':(t.bust?'Bust':'')}</td></tr>`).join('')}
-function renderProfile(){const sel=document.getElementById('profilePlayer');const old=sel.value;const allList=getAllPlayerList();sel.innerHTML=allList.map(p=>`<option>${p.name}</option>`).join('');sel.value=old||allList[0].name;const p=allList.find(x=>x.name===sel.value)||allList[0];const total=Object.values(p.hits).reduce((a,b)=>a+(+b||0),0);const singles=Object.values(p.hitDetail).reduce((a,x)=>a+(x.S||0),0);const doubles=Object.values(p.hitDetail).reduce((a,x)=>a+(x.D||0),0);const triples=Object.values(p.hitDetail).reduce((a,x)=>a+(x.T||0),0);document.getElementById('profileCards').innerHTML=`<div class="card"><small>Total piler</small><b>${total}</b></div><div class="card"><small>Single</small><b>${singles}</b></div><div class="card"><small>Dobbel</small><b>${doubles}</b></div><div class="card"><small>Trippel</small><b>${triples}</b></div><div class="card"><small>20</small><b>${p.hits[20]||0}</b></div><div class="card"><small>High</small><b>${p.high||0}</b></div>`;const keys=[20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,25,'Bull','M'];document.getElementById('hitTable').innerHTML=`<table class="table"><tr><th>Tall</th><th>Total</th><th>S</th><th>D</th><th>T</th></tr>${keys.map(k=>{const d=p.hitDetail[k]||{};return`<tr><td>${k}</td><td>${p.hits[k]||0}</td><td>${d.S||0}</td><td>${d.D||0}</td><td>${d.T||0}</td></tr>`}).join('')}</table>`}function renderSettings(){document.getElementById('setRoast').checked=state.settings.roast;document.getElementById('setHelmet').checked=state.settings.helmet;document.getElementById('setShootout').checked=state.settings.shootout}function saveSettings(){state.settings={roast:setRoast.checked,helmet:setHelmet.checked,shootout:setShootout.checked};save();alert('Lagret')}function exportBackup(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({version:'v16',state},null,2)],{type:'application/json'}));a.download='dart-score-backup.json';a.click()}function importBackup(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const d=JSON.parse(r.result);if(!d.state)return alert('Ugyldig backup');state=d.state;state.allPlayers=state.allPlayers||{};syncPlayersToDB();save();location.reload()};r.readAsText(f)}function clearAllStats(){if(!confirm('Slette all historikk/statistikk?'))return;const names=state.known,settings=state.settings;state=defaultState();state.known=names;state.settings=settings;names.forEach(n=>state.allPlayers[n]=newPlayer(n,state.startScore,state.inRule));save();location.reload()}function factoryReset(){if(!confirm('Nullstille hele appen?'))return;localStorage.removeItem(STORE);location.reload()}
-buildNumbers();render();if('serviceWorker'in navigator)navigator.serviceWorker.register('service-worker.js');
+function renderProfile(){const sel=document.getElementById('profilePlayer');const old=sel.value;const allList=getAllPlayerList();sel.innerHTML=allList.map(p=>`<option>${p.name}</option>`).join('');sel.value=old||allList[0].name;const p=allList.find(x=>x.name===sel.value)||allList[0];const total=Object.values(p.hits).reduce((a,b)=>a+(+b||0),0);const singles=Object.values(p.hitDetail).reduce((a,x)=>a+(x.S||0),0);const doubles=Object.values(p.hitDetail).reduce((a,x)=>a+(x.D||0),0);const triples=Object.values(p.hitDetail).reduce((a,x)=>a+(x.T||0),0);document.getElementById('profileCards').innerHTML=`<div class="card"><small>Total piler</small><b>${total}</b></div><div class="card"><small>Single</small><b>${singles}</b></div><div class="card"><small>Dobbel</small><b>${doubles}</b></div><div class="card"><small>Trippel</small><b>${triples}</b></div><div class="card"><small>20</small><b>${p.hits[20]||0}</b></div><div class="card"><small>High</small><b>${p.high||0}</b></div>`;const keys=[20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,25,'Bull','M'];document.getElementById('hitTable').innerHTML=`<table class="table"><tr><th>Tall</th><th>Total</th><th>S</th><th>D</th><th>T</th></tr>${keys.map(k=>{const d=p.hitDetail[k]||{};return`<tr><td>${k}</td><td>${p.hits[k]||0}</td><td>${d.S||0}</td><td>${d.D||0}</td><td>${d.T||0}</td></tr>`}).join('')}</table>`}
+function renderSettings(){document.getElementById('setRoast').checked=state.settings.roast;document.getElementById('setHelmet').checked=state.settings.helmet;document.getElementById('setShootout').checked=state.settings.shootout}
+function saveSettings(){state.settings={roast:setRoast.checked,helmet:setHelmet.checked,shootout:setShootout.checked};save();alert('Lagret')}
+function exportBackup(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({version:'v17-cloud',state},null,2)],{type:'application/json'}));a.download='dart-score-backup.json';a.click()}
+function importBackup(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const d=JSON.parse(r.result);if(!d.state)return alert('Ugyldig backup');state=d.state;state.allPlayers=state.allPlayers||{};syncPlayersToDB();save();location.reload()};r.readAsText(f)}
+function clearAllStats(){if(!confirm('Slette all historikk/statistikk?'))return;const names=state.known,settings=state.settings;state=defaultState();state.known=names;state.settings=settings;names.forEach(n=>state.allPlayers[n]=newPlayer(n,state.startScore,state.inRule));save();location.reload()}
+async function factoryReset(){
+  if(!confirm('Nullstille hele appen – både lokalt og i Neon?'))return;
+  const clean=defaultState();
+  await resetCloudState(clean);
+  localStorage.removeItem(STORE);
+  location.reload();
+}
+async function initApp(){
+  // Prøv skyen først. Hvis Neon er tom/utilgjengelig, beholdes lokal state.
+  await loadCloudState();
+
+  ensure();
+  buildNumbers();
+  render();
+
+  // Hvis Neon var tom, vil render()->save() synkronisere lokal state etter 500 ms.
+  if('serviceWorker'in navigator){
+    navigator.serviceWorker.register('service-worker.js').catch(error=>{
+      console.warn('DART SCORE: service worker kunne ikke registreres.',error);
+    });
+  }
+}
+
+initApp();
