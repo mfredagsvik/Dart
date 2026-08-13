@@ -1,0 +1,8 @@
+{
+  "name": "dart-score",
+  "version": "17.0.0",
+  "type": "module",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0"
+  }
+}
