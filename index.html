@@ -20,10 +20,10 @@
 <section class="mid">
   <aside class="roast"><h3>ROAST 🔥</h3><div id="roastMain" class="rmain">Klar.</div><div id="roastSub" class="rsub">Ingen slipper unna.</div></aside>
   <section class="board">
-    <div class="active"><small>AKTIV SPILLER</small><div id="activeName" class="aname"></div><div id="activeScore" class="ascore"></div><p>Før kast: <b id="beforeScore"></b></p><p>Checkout: <b id="checkout"></b></p><div id="status" class="status"></div></div>
-    <div class="darts"><div id="dartCards" class="dartcards"></div><div class="live"><div><small>SUM</small><b id="sumNow">0</b></div><div><small>IGJEN</small><b id="scoreNow">501</b></div><div><small>LIVE</small><span id="trail">501</span></div></div></div>
+    <div class="active"><small>AKTIV SPILLER</small><div id="activeName" class="aname"></div><div id="activeScore" class="ascore"></div><p>Før kast: <b id="beforeScore"></b></p><p><span id="checkoutLabel">Checkout</span>: <b id="checkout"></b></p><div id="status" class="status"></div></div>
+    <div class="darts"><div id="dartCards" class="dartcards"></div><div class="live"><div><small>SUM</small><b id="sumNow">0</b></div><div><small id="scoreLabel">IGJEN</small><b id="scoreNow">501</b></div><div><small>LIVE</small><span id="trail">501</span></div></div></div>
   </section>
-  <aside class="side"><button onclick="giveYellow()"><small>🟨 GULT</small><b id="yellow">0</b></button><div><small>PILER</small><b id="dartsThrown">0</b></div><div><small>IN</small><b id="inDarts">0</b></div><div><small>HJELM</small><b id="helmet">0</b></div></aside>
+  <aside class="side"><button onclick="giveYellow()"><small>🟨 GULT</small><b id="yellow">0</b></button><div><small>PILER</small><b id="dartsThrown">0</b></div><div><small id="inLabel">IN</small><b id="inDarts">0</b></div><div><small>HJELM</small><b id="helmet">0</b></div></aside>
 </section>
 <section class="keypad"><div class="mods"><button id="btnD" onclick="toggleMod('D')" class="double">D</button><button onclick="miss()" class="miss">M</button></div><div id="numbers" class="numbers"></div><button id="btnT" onclick="toggleMod('T')" class="triple">T</button></section>
 </main>
@@ -32,7 +32,7 @@
 
 <section id="start" class="page">
   <div class="panel row"><h1>Start spill</h1><button onclick="showGame()">Til spill</button><button class="primary" onclick="startGame()">Start nytt spill</button></div>
-  <div class="grid"><div class="panel"><h2>Oppsett</h2><div class="row"><label>Spill <select id="startScore" class="field"><option>301</option><option selected>501</option><option>701</option></select></label><label>IN <select id="inRule" class="field"><option value="single">Single In</option><option selected value="master">Master In</option></select></label><label>OUT <select id="outRule" class="field"><option value="single">Single Out</option><option value="double">Double Out</option><option selected value="master">Master Out</option></select></label></div><h2>Spillere</h2><div id="pickList" class="pickList"></div><div class="row"><input id="newName" class="field" placeholder="Nytt navn"><button onclick="addPlayerName()">Legg til</button></div></div><div class="panel"><h2>Backup</h2><button onclick="exportBackup()">Eksporter backup</button><input type="file" accept="application/json" onchange="importBackup(event)"></div></div>
+  <div class="grid"><div class="panel"><h2>Oppsett</h2><div class="row"><label>Spill <select id="startScore" class="field" onchange="updateGameOptions()"><option>300</option><option>301</option><option selected>501</option><option>701</option></select></label><label>IN <select id="inRule" class="field"><option value="single">Single In</option><option selected value="master">Master In</option></select></label><label>OUT <select id="outRule" class="field"><option value="single">Single Out</option><option value="double">Double Out</option><option selected value="master">Master Out</option></select></label></div><h2>Spillere</h2><div id="pickList" class="pickList"></div><div class="row"><input id="newName" class="field" placeholder="Nytt navn"><button onclick="addPlayerName()">Legg til</button></div></div><div class="panel"><h2>Backup</h2><button onclick="exportBackup()">Eksporter backup</button><input type="file" accept="application/json" onchange="importBackup(event)"></div></div>
 </section>
 
 <section id="history" class="page">

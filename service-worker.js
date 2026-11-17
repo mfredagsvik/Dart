@@ -1,5 +1,26 @@
-const CACHE='dart-score-v19-seasons-display-1';
+const CACHE='dart-score-v19-bull300-1';
 const ASSETS=['./','./index.html','./style.css','./style-ultrawide.css','./app.js','./roasts.js','./manifest.json','./icon-192.png','./icon-512.png'];
-self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));});
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
-self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;e.respondWith(fetch(e.request).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return r}).catch(()=>caches.match(e.request)));});
+const assetUrls=new Set(ASSETS.map(path=>new URL(path,self.registration.scope).href));
+
+self.addEventListener('install',event=>{
+  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
+});
+
+self.addEventListener('activate',event=>{
+  event.waitUntil(caches.keys().then(keys=>Promise.all(
+    keys.filter(key=>key.startsWith('dart-score-')&&key!==CACHE).map(key=>caches.delete(key))
+  )).then(()=>self.clients.claim()));
+});
+
+self.addEventListener('fetch',event=>{
+  const {request}=event;
+  const url=new URL(request.url);
+  if(request.method!=='GET'||url.origin!==self.location.origin)return;
+  if(url.pathname.startsWith(new URL('api/',self.registration.scope).pathname))return;
+  if(request.mode!=='navigate'&&!assetUrls.has(url.href))return;
+
+  event.respondWith(fetch(request).catch(async()=>{
+    const cache=await caches.open(CACHE);
+    return (await cache.match(request))||(request.mode==='navigate'&&await cache.match('./index.html'))||Response.error();
+  }));
+});

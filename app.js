@@ -3,103 +3,147 @@ function freshHits(){const h={M:0,Bull:0};for(let i=1;i<=20;i++)h[i]=0;h[25]=0;r
 function newPlayer(name,score=501,inRule='master'){return{name,score,inOpen:inRule==='single',darts:0,total:0,high:0,n180:0,lastSum:0,wins:0,helmet:0,helmetPending:0,yellow:0,hundredPlus:0,weakSum:0,gay:0,busts:0,inAttempts:0,masterHistory:[],hits:freshHits(),hitDetail:freshHitDetail(),todayHits:freshHits(),todayHitDetail:freshHitDetail(),throwsThisGame:0,pilesThrown:0,winner:false}}
 function defaultRecords(){return{highestThrow:{player:'-',score:0,date:'-'},highestCheckout:{player:'-',score:0,date:'-'},masterWorst:{player:'-',darts:0,date:'-'}}}
 function defaultState(){const now=new Date();return{startScore:501,inRule:'master',outRule:'master',active:0,selected:null,current:[],throws:[],games:[],known:[...DEFAULT_NAMES],allPlayers:{},players:DEFAULT_NAMES.map(n=>newPlayer(n,501,'master')),dailyHigh:0,totalThrows:0,message:'',roastMain:'Klar.',roastSub:'Ingen slipper unna.',shootout:false,shootoutScores:{},shootoutDone:{},shootoutRound:0,settings:{roast:true,helmet:true,shootout:true},records:defaultRecords(),seasonId:`season-${Date.now()}`,seasonName:`Sesong ${now.getFullYear()}`,seasonStartedAt:now.toISOString(),seasonEndedAt:null,seasonActive:true,seasons:[]}}
-let state=JSON.parse(localStorage.getItem(STORE)||'null')||defaultState();
+function readLocalState(){
+  try{
+    return JSON.parse(localStorage.getItem(STORE)||'null');
+  }catch(error){
+    console.warn('DART SCORE: kunne ikke lese lokal lagring.',error);
+    return null;
+  }
+}
+
+const localState=readLocalState();
+let pendingCloudSave=localState?._pendingCloudSave===true;
+let state=localState||defaultState();
+delete state._pendingCloudSave;
 function normalizePlayer(p){const base=newPlayer((p&&p.name)||'Spiller',state.startScore||501,state.inRule||'master');const out=Object.assign(base,p||{});out.hits=out.hits||freshHits();out.hitDetail=out.hitDetail||freshHitDetail();out.todayHits=out.todayHits||freshHits();out.todayHitDetail=out.todayHitDetail||freshHitDetail();out.masterHistory=out.masterHistory||[];return out}
 function syncPlayersToDB(){state.allPlayers=state.allPlayers||{};(state.players||[]).forEach(p=>state.allPlayers[p.name]=normalizePlayer(p))}
 function getAllPlayerNames(){syncPlayersToDB();return[...new Set([...(state.known||[]),...Object.keys(state.allPlayers),...(state.players||[]).map(p=>p.name),...(state.throws||[]).map(t=>t.player)])]}
 function getAllPlayerList(){return getAllPlayerNames().map(n=>state.allPlayers[n]||newPlayer(n,state.startScore||501,state.inRule||'master'))}
 
-/* ===== DART SCORE v17 CLOUD / NEON =====
-   Neon er "source of truth" når det finnes data i skyen.
-   localStorage beholdes som lokal/offline backup.
-*/
-let cloudSaveTimer=null;
-let cloudReady=false;
+let cloudSaveTimer;
 let cloudSaving=false;
-let cloudSaveQueued=false;
+let cloudAvailable=false;
+let cloudLoading=false;
+let cloudUnsupported=false;
+let savedSnapshot;
+const cloudEndpoint=new URL('api/state',location.href);
+
+function persistLocal(){
+  try{
+    localStorage.setItem(STORE,`${savedSnapshot.slice(0,-1)},"_pendingCloudSave":${pendingCloudSave}}`);
+  }catch(error){
+    console.warn('DART SCORE: kunne ikke lagre kampen lokalt.',error);
+  }
+}
+
+async function cloudRequest(options={}){
+  const url=new URL(cloudEndpoint);
+  if(!options.method)url.searchParams.set('fresh',Date.now());
+  const response=await fetch(url,{
+    cache:'no-store',
+    signal:AbortSignal.timeout(5000),
+    ...options
+  });
+  if(!response.ok){
+    if(!options.method&&[404,405].includes(response.status))cloudUnsupported=true;
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+function scheduleCloudSave(delay=500){
+  clearTimeout(cloudSaveTimer);
+  if(cloudAvailable&&pendingCloudSave){
+    cloudSaveTimer=setTimeout(saveCloudState,delay);
+  }
+}
 
 async function loadCloudState(){
+  if(cloudLoading||cloudAvailable||cloudUnsupported)return;
+  cloudLoading=true;
   try{
-    const response=await fetch('/api/state',{method:'GET',cache:'no-store'});
-    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const data=await cloudRequest();
+    if(!data.ok)throw new Error('Ugyldig svar fra Neon');
 
-    const data=await response.json();
-    const cloudState=data&&data.ok&&data.state&&typeof data.state==='object'
-      ? data.state
-      : null;
-
-    if(cloudState&&Object.keys(cloudState).length>0){
-      state=cloudState;
-      localStorage.setItem(STORE,JSON.stringify(state));
-      console.info('DART SCORE: state lastet fra Neon');
-      return true;
+    const remote=data.state;
+    if(!pendingCloudSave&&Array.isArray(remote?.players)&&remote.players.length>0){
+      // Recover progress saved locally before the pending-save marker was introduced.
+      const localHasProgress=localState&&state.seasonId===remote.seasonId&&
+        (state.throws?.length>remote.throws?.length||
+          (state.throws?.length===remote.throws?.length&&state.current?.length>0&&!remote.current?.length));
+      if(localHasProgress){
+        pendingCloudSave=true;
+      }else{
+        state=remote;
+        ensure();
+        syncPlayersToDB();
+        savedSnapshot=JSON.stringify(state);
+        render();
+        if(document.querySelector('.page.active')?.id==='start')renderStart();
+      }
+      persistLocal();
+    }else if(!pendingCloudSave&&localState){
+      pendingCloudSave=true;
+      persistLocal();
     }
 
-    console.info('DART SCORE: Neon er tom – bruker lokal state og synkroniserer den opp');
-    return false;
+    cloudAvailable=true;
+    scheduleCloudSave(0);
   }catch(error){
-    console.warn('DART SCORE: kunne ikke laste fra Neon. Bruker localStorage.',error);
-    return false;
+    console.warn('DART SCORE: Neon er utilgjengelig. Kampen fortsetter lokalt.',error);
+    if(pendingCloudSave&&navigator.onLine&&!cloudUnsupported){
+      clearTimeout(cloudSaveTimer);
+      cloudSaveTimer=setTimeout(loadCloudState,15000);
+    }
   }finally{
-    cloudReady=true;
+    cloudLoading=false;
   }
 }
 
 async function saveCloudState(){
-  if(!cloudReady)return;
-
-  if(cloudSaving){
-    cloudSaveQueued=true;
-    return;
-  }
-
+  if(cloudSaving||!pendingCloudSave)return;
   cloudSaving=true;
+  const snapshot=savedSnapshot;
+  let delay=0;
   try{
-    const snapshot=JSON.parse(JSON.stringify(state));
-    const response=await fetch('/api/state',{
+    const data=await cloudRequest({
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({state:snapshot})
+      body:`{"state":${snapshot}}`
     });
-
-    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    if(!data.ok)throw new Error('Neon bekreftet ikke lagringen');
+    if(snapshot===savedSnapshot){
+      pendingCloudSave=false;
+      persistLocal();
+    }
   }catch(error){
-    console.warn('DART SCORE: kunne ikke lagre til Neon. Lokal backup er fortsatt lagret.',error);
+    console.warn('DART SCORE: sky-lagring mislyktes. Kampen er lagret lokalt.',error);
+    delay=15000;
   }finally{
     cloudSaving=false;
-    if(cloudSaveQueued){
-      cloudSaveQueued=false;
-      saveCloudState();
-    }
+    scheduleCloudSave(delay);
   }
 }
 
 function save(){
   syncPlayersToDB();
-
-  // Lokal/offline backup – skjer umiddelbart.
-  localStorage.setItem(STORE,JSON.stringify(state));
-
-  // Sky-lagring – debounce hindrer unødvendige kall fra render().
-  clearTimeout(cloudSaveTimer);
-  cloudSaveTimer=setTimeout(()=>{
-    if(cloudReady)saveCloudState();
-  },500);
-}
-
-async function resetCloudState(nextState){
-  try{
-    const response=await fetch('/api/state',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({state:nextState})
-    });
-    return response.ok;
-  }catch(error){
-    console.warn('DART SCORE: kunne ikke nullstille Neon-state.',error);
-    return false;
+  const snapshot=JSON.stringify(state);
+  if(snapshot===savedSnapshot)return;
+  savedSnapshot=snapshot;
+  pendingCloudSave=true;
+  persistLocal();
+  if(cloudAvailable)scheduleCloudSave();
+  else if(navigator.onLine&&!cloudLoading&&!cloudUnsupported){
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer=setTimeout(loadCloudState,500);
   }
 }
+
+window.addEventListener('online',()=>{
+  if(cloudAvailable)scheduleCloudSave(0);
+  else loadCloudState();
+});
 
 /* ===== DART SCORE v19 DISPLAY PROFILE =====
    Display mode is intentionally local per device, not synced to Neon.
@@ -252,18 +296,138 @@ function ensure(){
 }
 function pick(a){return a[Math.floor(Math.random()*a.length)]}function roast(cat,main,sub=''){if(!state.settings.roast){state.roastMain='';state.roastSub='';return}const arr=(window.ROAST_LIBRARY&&window.ROAST_LIBRARY[cat])||[];state.roastMain=main;state.roastSub=arr.length?pick(arr):sub}
 function showPage(id){document.getElementById('game').style.display='none';document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');if(id==='start')renderStart();if(id==='history')renderHistory();if(id==='profile')renderProfile();if(id==='settings')renderSettings()}function showGame(){document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('game').style.display='grid';render()}
-function val(d){if(!d||d.mod==='M')return 0;let v=d.num*(d.mod==='D'?2:d.mod==='T'?3:1);if(d.num===25&&d.mod==='D')v=50;if(d.num===25&&d.mod==='T')v=25;return v}function liveDarts(){const pl=state.players[state.active];let opened=pl.inOpen||state.inRule==='single';return state.current.map(d=>{let x={...d,value:val(d),label:d.mod==='M'?'M':`${d.mod}${d.num}`};if(state.inRule==='master'&&!opened){if(d.mod==='D'||d.mod==='T'){opened=true}else{x.value=0;x.label=x.label==='M'?'M':x.label+'=0'}}return x})}function liveSum(){return liveDarts().reduce((a,d)=>a+d.value,0)}function scoreNow(){if(state.shootout)return '—';const s=state.players[state.active].score-liveSum();return s<0?state.players[state.active].score:s}function avgMaster(p){return p.masterHistory.length?p.masterHistory.reduce((a,b)=>a+b,0)/p.masterHistory.length:0}
+const BULL_300_TARGET=300;
+function isBull300(){
+  return state.startScore===BULL_300_TARGET;
+}
+
+function bull300Turn(){
+  let owner=state.bull300Owner??null;
+  const darts=state.current.map(dart=>{
+    const innerBull=dart.num===25&&dart.mod==='D';
+    if(innerBull)owner=state.active;
+    const value=owner===state.active&&dart.num===20?val(dart):0;
+    const label=innerBull?'Bull':dart.mod==='M'?'M':`${dart.mod}${dart.num}`;
+    return {...dart,value,label};
+  });
+  return {owner,darts,sum:darts.reduce((sum,dart)=>sum+dart.value,0)};
+}
+
+function saveBull300Turn(){
+  const player=state.players[state.active];
+  if(player.winner)return;
+  const {owner,darts,sum}=bull300Turn();
+  const before=player.score;
+  const after=before+sum;
+  const won=after>=BULL_300_TARGET;
+  state.throws.push({
+    time:new Date().toLocaleString('no-NO'),
+    player:player.name,playerIndex:state.active,before,darts,sum,after,
+    bull300:{previousOwner:state.bull300Owner??null,lastSum:player.lastSum,high:player.high,won}
+  });
+  state.bull300Owner=owner;
+  state.current=[];
+  state.selected=null;
+  state.totalThrows+=darts.length;
+  player.score=after;
+  player.lastSum=sum;
+  player.throwsThisGame++;
+  player.pilesThrown+=darts.length;
+  player.darts+=darts.length;
+  player.total+=sum;
+  player.high=Math.max(player.high,sum);
+  if(sum===180)player.n180++;
+  recordHits(player,darts);
+  state.message='';
+  if(won){
+    player.winner=true;
+    player.wins++;
+    state.games.unshift({date:new Date().toLocaleString('no-NO'),winner:player.name,score:BULL_300_TARGET,finishScore:after});
+    state.message=`${player.name} vant med ${after} poeng`;
+    roast('win','🏆 VINNER');
+    render();
+    showWinner(state.message);
+    return;
+  }
+  next();
+  render();
+}
+
+function undoBull300Turn(){
+  if(state.current.length||state.throws.length<=state.bull300StartTurn)return;
+  const turn=state.throws.at(-1);
+  if(!turn?.bull300)return;
+  state.throws.pop();
+  const player=state.players[turn.playerIndex];
+  state.active=turn.playerIndex;
+  state.bull300Owner=turn.bull300.previousOwner;
+  state.selected=null;
+  state.totalThrows-=turn.darts.length;
+  player.score=turn.before;
+  player.lastSum=turn.bull300.lastSum;
+  player.high=turn.bull300.high;
+  player.throwsThisGame--;
+  player.pilesThrown-=turn.darts.length;
+  player.darts-=turn.darts.length;
+  player.total-=turn.sum;
+  if(turn.sum===180)player.n180--;
+  recordHits(player,turn.darts,-1);
+  if(turn.bull300.won){
+    player.winner=false;
+    player.wins--;
+    state.games.shift();
+    state.roastMain='';
+    state.roastSub='';
+    closeWinner();
+  }
+  state.message='Kast angret';
+  render();
+}
+
+function updateGameOptions(){
+  const bull300=document.getElementById('startScore').value===String(BULL_300_TARGET);
+  document.getElementById('inRule').disabled=bull300;
+  document.getElementById('outRule').disabled=bull300;
+}
+
+function val(d){if(!d||d.mod==='M')return 0;let v=d.num*(d.mod==='D'?2:d.mod==='T'?3:1);if(d.num===25&&d.mod==='D')v=50;if(d.num===25&&d.mod==='T')v=25;return v}function liveDarts(){if(isBull300())return bull300Turn().darts;const pl=state.players[state.active];let opened=pl.inOpen||state.inRule==='single';return state.current.map(d=>{let x={...d,value:val(d),label:d.mod==='M'?'M':`${d.mod}${d.num}`};if(state.inRule==='master'&&!opened){if(d.mod==='D'||d.mod==='T'){opened=true}else{x.value=0;x.label=x.label==='M'?'M':x.label+'=0'}}return x})}function liveSum(){return liveDarts().reduce((a,d)=>a+d.value,0)}function scoreNow(){if(state.shootout)return '—';if(isBull300())return state.players[state.active].score+liveSum();const s=state.players[state.active].score-liveSum();return s<0?state.players[state.active].score:s}function avgMaster(p){return p.masterHistory.length?p.masterHistory.reduce((a,b)=>a+b,0)/p.masterHistory.length:0}
 function playerRoast(p){const avgIn=avgMaster(p),worst=p.masterHistory.length?Math.max(...p.masterHistory):0,rounds=Math.max(1,p.throwsThisGame||0),weakPct=Math.round(((p.weakSum||0)/rounds)*100);if((p.helmetPending||0)>0)return'🪖 HJELM NESTE SPILL';if(!p.inOpen&&state.inRule==='master'){const n=(p.inAttempts||0)+(state.players[state.active]===p?state.current.length:0);if(n>=15)return`🚪 ${n} piler ute – rekordfare`;if(n>=10)return`🏕️ ${n} piler ute`;if(n>=5)return`🚪 ${n} piler før inn`;return'🚪 Ikke inne'}if(worst>=15)return`🚪 Verste inn: ${worst} piler`;if(avgIn>=8)return`🚪 Snitt inn ${avgIn.toFixed(1)} piler`;if((p.gay||0)>=3)return`🌈 26 x${p.gay}`;if(weakPct>=50&&rounds>=4)return`📉 Svake summer ${weakPct}%`;if((p.busts||0)>=3)return`💥 Bust x${p.busts}`;if((p.hundredPlus||0)>=5)return`🔥 100+ x${p.hundredPlus}`;if((p.lastSum||0)>=140)return`💪 Sterkt kast`;if((p.lastSum||0)>=100)return`✅ 100+`;if((p.yellow||0)>0)return`🟨 Gult x${p.yellow}`;return'🎯 Klar'}
-function render(){ensure();const pl=state.players[state.active];document.documentElement.style.setProperty('--cols',Math.min(state.players.length,4));document.getElementById('gameTitle').textContent=state.shootout?`BONUSRUNDE / ${state.shootoutRound||1}`:`SPILL / ${state.startScore}`;document.getElementById('players').innerHTML=state.players.map((p,i)=>`<div class="player ${i===state.active?'active':''}"><div class="pname">${p.name}${p.winner?' 🏆':''}</div><div class="proast">${playerRoast(p)}</div><div class="pscore">${state.shootout?'BONUS':(i===state.active?scoreNow():p.score)}</div><div class="pstats"><div>SISTE<b>${p.lastSum||0}</b></div><div>AVG<b>${p.darts?((p.total/p.darts)*3).toFixed(1):'0.0'}</b></div><div>100+<b>${p.hundredPlus||0}</b></div><div>SVAK<b>${p.weakSum||0}</b></div><div>HJELM<b>${p.helmet||0}</b></div></div></div>`).join('');document.getElementById('activeName').textContent=pl.name;document.getElementById('activeScore').textContent=state.shootout?'BONUS':scoreNow();document.getElementById('beforeScore').textContent=state.shootout?'Bonusrunde':pl.score;document.getElementById('status').textContent=state.message||'';document.getElementById('checkout').textContent=state.shootout?'Høyeste sum vinner':checkout(scoreNow());const darts=liveDarts();document.getElementById('dartCards').innerHTML=[0,1,2].map(i=>{const d=darts[i];return`<div class="dart ${d?'filled':''} ${i===state.current.length?'active':''}"><h4>KAST ${i+1}</h4><div class="dot"></div><div class="dval">${d?d.value:'—'}</div><div class="dlab">${d?d.label:'—'}</div></div>`}).join('');document.getElementById('sumNow').textContent=liveSum();document.getElementById('scoreNow').textContent=state.shootout?'—':scoreNow();let run=pl.score,trail=[run];darts.forEach(d=>{run-=d.value;trail.push(run<0?pl.score:run)});document.getElementById('trail').innerHTML=state.shootout?'BONUS: høyeste sum vinner':trail.join(' → ');document.getElementById('dartsThrown').textContent=pl.pilesThrown||0;document.getElementById('inDarts').textContent=pl.inOpen?'IN':(pl.inAttempts+state.current.length);document.getElementById('yellow').textContent=pl.yellow||0;document.getElementById('helmet').textContent=pl.helmet||0;document.getElementById('roastMain').textContent=state.roastMain||'';document.getElementById('roastSub').textContent=state.roastSub||'';document.getElementById('btnD').classList.toggle('selected',state.selected==='D');document.getElementById('btnT').classList.toggle('selected',state.selected==='T');save()}
+function render(){ensure();const pl=state.players[state.active];
+const bull300=isBull300();
+const owner=bull300?bull300Turn().owner:null;
+document.getElementById('checkoutLabel').textContent=bull300?'Bull':'Checkout';
+document.getElementById('scoreLabel').textContent=bull300?'POENG':'IGJEN';
+document.getElementById('inLabel').textContent=bull300?'BULL':'IN';document.documentElement.style.setProperty('--cols',Math.min(state.players.length,4));document.getElementById('gameTitle').textContent=state.shootout?`BONUSRUNDE / ${state.shootoutRound||1}`:`SPILL / ${state.startScore}`;document.getElementById('players').innerHTML=state.players.map((p,i)=>`<div class="player ${i===state.active?'active':''}"><div class="pname">${p.name}${p.winner?' 🏆':''}</div><div class="proast">${bull300?(i===owner?'🎯 Har bull':'Trenger innerbull'):playerRoast(p)}</div><div class="pscore">${state.shootout?'BONUS':(i===state.active?scoreNow():p.score)}</div><div class="pstats"><div>SISTE<b>${p.lastSum||0}</b></div><div>AVG<b>${p.darts?((p.total/p.darts)*3).toFixed(1):'0.0'}</b></div><div>100+<b>${p.hundredPlus||0}</b></div><div>SVAK<b>${p.weakSum||0}</b></div><div>HJELM<b>${p.helmet||0}</b></div></div></div>`).join('');document.getElementById('activeName').textContent=pl.name;document.getElementById('activeScore').textContent=state.shootout?'BONUS':scoreNow();document.getElementById('beforeScore').textContent=state.shootout?'Bonusrunde':pl.score;document.getElementById('status').textContent=state.message||'';document.getElementById('checkout').textContent=bull300?(owner===state.active?'20, D20 og T20 teller':'Treff innerbull (D + 25)'):state.shootout?'Høyeste sum vinner':checkout(scoreNow());const darts=liveDarts();document.getElementById('dartCards').innerHTML=[0,1,2].map(i=>{const d=darts[i];return`<div class="dart ${d?'filled':''} ${i===state.current.length?'active':''}"><h4>KAST ${i+1}</h4><div class="dot"></div><div class="dval">${d?d.value:'—'}</div><div class="dlab">${d?d.label:'—'}</div></div>`}).join('');document.getElementById('sumNow').textContent=liveSum();document.getElementById('scoreNow').textContent=state.shootout?'—':scoreNow();let run=pl.score,trail=[run];darts.forEach(d=>{run+=bull300?d.value:-d.value;trail.push(run<0?pl.score:run)});document.getElementById('trail').innerHTML=state.shootout?'BONUS: høyeste sum vinner':trail.join(' → ');document.getElementById('dartsThrown').textContent=pl.pilesThrown||0;document.getElementById('inDarts').textContent=bull300?(owner===state.active?'JA':'NEI'):pl.inOpen?'IN':(pl.inAttempts+state.current.length);document.getElementById('yellow').textContent=pl.yellow||0;document.getElementById('helmet').textContent=pl.helmet||0;document.getElementById('roastMain').textContent=state.roastMain||'';document.getElementById('roastSub').textContent=state.roastSub||'';document.getElementById('btnD').classList.toggle('selected',state.selected==='D');document.getElementById('btnT').classList.toggle('selected',state.selected==='T');save()}
 function buildNumbers(){const nums=[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,25];document.getElementById('numbers').innerHTML=nums.map(n=>`<button class="${[20,19,25].includes(n)?'hot':''}" onclick="hit(${n})">${n}</button>`).join('')+`<button class="wide1" onclick="undoDart()">↶ PIL</button><button class="wide2" onclick="undoThrow()">↶ KAST</button><button class="wide3" onclick="forceNext()">OK / NESTE</button>`}
-function toggleMod(m){state.selected=state.selected===m?null:m;render()}function hit(n){if(state.current.length>=3)return;state.message='';state.current.push({num:n,mod:state.selected||'S'});state.selected=null;if(state.current.length>=3||shouldEnd())saveThrow();else render()}function miss(){if(state.current.length>=3)return;state.message='';state.current.push({num:0,mod:'M'});if(state.current.length>=3||shouldEnd())saveThrow();else render()}function undoDart(){state.current.pop();render()}function shouldEnd(){if(state.shootout)return state.current.length>=3;const after=state.players[state.active].score-liveSum();return after<=1}function isValidOut(last){return state.outRule==='single'||(state.outRule==='double'&&last?.mod==='D')||(state.outRule==='master'&&(last?.mod==='D'||last?.mod==='T'))}function forceNext(){saveThrow()}
-function recordHits(pl,darts){darts.forEach(d=>{if(d.mod==='M'){pl.hits.M++;pl.todayHits.M++;pl.hitDetail.M.M++;pl.todayHitDetail.M.M++;return}let key=d.num===25&&d.mod==='D'?'Bull':String(d.num);pl.hits[key]=(pl.hits[key]||0)+1;pl.todayHits[key]=(pl.todayHits[key]||0)+1;if(!pl.hitDetail[key])pl.hitDetail[key]={S:0,D:0,T:0};if(!pl.todayHitDetail[key])pl.todayHitDetail[key]={S:0,D:0,T:0};pl.hitDetail[key][d.mod]=(pl.hitDetail[key][d.mod]||0)+1;pl.todayHitDetail[key][d.mod]=(pl.todayHitDetail[key][d.mod]||0)+1})}
-function saveThrow(){while(state.current.length<3)state.current.push({num:0,mod:'M'});const idx=state.active,pl=state.players[idx],before=pl.score,darts=liveDarts(),sum=darts.reduce((a,d)=>a+d.value,0);if(state.shootout)return saveShootout(pl,darts,sum);let after=before-sum,bust=after<0||after===1,win=false,msg='',openedNow=false;const last=[...darts].reverse().find(d=>d.value>0);if(state.inRule==='master'&&!pl.inOpen){const oi=darts.findIndex(d=>d.mod==='D'||d.mod==='T');if(oi>=0){openedNow=true;pl.inAttempts+=oi+1}else pl.inAttempts+=3}if(after===0){if(isValidOut(last)){win=true;msg=`${pl.name} vant!`}else{bust=true;msg='BUST – feil utslag'}}else if(bust)msg='BUST – neste spiller';pl.lastSum=sum;pl.throwsThisGame++;pl.pilesThrown=(pl.pilesThrown||0)+3;state.totalThrows+=3;state.throws.push({time:new Date().toLocaleString('no-NO'),player:pl.name,playerIndex:idx,before,darts,sum,after:bust?before:after,bust});recordHits(pl,darts);if(sum<100)pl.weakSum++;else pl.hundredPlus++;if(sum===26)pl.gay++;if(!bust){pl.score=after;pl.darts+=darts.length;pl.total+=sum;pl.high=Math.max(pl.high,sum);if(sum===180)pl.n180++;if(sum>(state.records.highestThrow.score||0))state.records.highestThrow={player:pl.name,score:sum,date:new Date().toLocaleString('no-NO')};if(openedNow){pl.inOpen=true;pl.masterHistory.push(pl.inAttempts);if(pl.inAttempts>=5){state.roastMain=`🚪 ${pl.name}: ${pl.inAttempts} piler før Master In.`;state.roastSub=window.getMasterInRoast?window.getMasterInRoast(pl.inAttempts):''}if(pl.inAttempts>(state.records.masterWorst.darts||0))state.records.masterWorst={player:pl.name,darts:pl.inAttempts,date:new Date().toLocaleString('no-NO')}}if(win){finishWin(pl,before);return}}state.current=[];state.message=msg;analyzeRoast(pl,sum,bust,openedNow);if(state.settings.shootout&&state.players.every(p=>(p.pilesThrown||0)>=45&&!p.winner))enterShootout();else next();render()}
+function toggleMod(m){state.selected=state.selected===m?null:m;render()}function hit(n){if(state.current.length>=3||(isBull300()&&state.players[state.active].winner))return;state.message='';state.current.push({num:n,mod:state.selected||'S'});state.selected=null;if(state.current.length>=3||shouldEnd())saveThrow();else render()}function miss(){if(state.current.length>=3||(isBull300()&&state.players[state.active].winner))return;state.message='';state.current.push({num:0,mod:'M'});if(state.current.length>=3||shouldEnd())saveThrow();else render()}function undoDart(){state.current.pop();render()}function shouldEnd(){if(isBull300())return scoreNow()>=BULL_300_TARGET;if(state.shootout)return state.current.length>=3;const after=state.players[state.active].score-liveSum();return after<=1}function isValidOut(last){return state.outRule==='single'||(state.outRule==='double'&&last?.mod==='D')||(state.outRule==='master'&&(last?.mod==='D'||last?.mod==='T'))}function forceNext(){saveThrow()}
+function recordHits(player,darts,delta=1){
+  for(const dart of darts){
+    const key=dart.mod==='M'?'M':dart.num===25&&dart.mod==='D'?'Bull':String(dart.num);
+    player.hits[key]=(player.hits[key]||0)+delta;
+    player.todayHits[key]=(player.todayHits[key]||0)+delta;
+    for(const detail of [player.hitDetail,player.todayHitDetail]){
+      detail[key]??={S:0,D:0,T:0};
+      detail[key][dart.mod]=(detail[key][dart.mod]||0)+delta;
+    }
+  }
+}
+function saveThrow(){if(isBull300())return saveBull300Turn();while(state.current.length<3)state.current.push({num:0,mod:'M'});const idx=state.active,pl=state.players[idx],before=pl.score,darts=liveDarts(),sum=darts.reduce((a,d)=>a+d.value,0);if(state.shootout)return saveShootout(pl,darts,sum);let after=before-sum,bust=after<0||after===1,win=false,msg='',openedNow=false;const last=[...darts].reverse().find(d=>d.value>0);if(state.inRule==='master'&&!pl.inOpen){const oi=darts.findIndex(d=>d.mod==='D'||d.mod==='T');if(oi>=0){openedNow=true;pl.inAttempts+=oi+1}else pl.inAttempts+=3}if(after===0){if(isValidOut(last)){win=true;msg=`${pl.name} vant!`}else{bust=true;msg='BUST – feil utslag'}}else if(bust)msg='BUST – neste spiller';pl.lastSum=sum;pl.throwsThisGame++;pl.pilesThrown=(pl.pilesThrown||0)+3;state.totalThrows+=3;state.throws.push({time:new Date().toLocaleString('no-NO'),player:pl.name,playerIndex:idx,before,darts,sum,after:bust?before:after,bust});recordHits(pl,darts);if(sum<100)pl.weakSum++;else pl.hundredPlus++;if(sum===26)pl.gay++;if(!bust){pl.score=after;pl.darts+=darts.length;pl.total+=sum;pl.high=Math.max(pl.high,sum);if(sum===180)pl.n180++;if(sum>(state.records.highestThrow.score||0))state.records.highestThrow={player:pl.name,score:sum,date:new Date().toLocaleString('no-NO')};if(openedNow){pl.inOpen=true;pl.masterHistory.push(pl.inAttempts);if(pl.inAttempts>=5){state.roastMain=`🚪 ${pl.name}: ${pl.inAttempts} piler før Master In.`;state.roastSub=window.getMasterInRoast?window.getMasterInRoast(pl.inAttempts):''}if(pl.inAttempts>(state.records.masterWorst.darts||0))state.records.masterWorst={player:pl.name,darts:pl.inAttempts,date:new Date().toLocaleString('no-NO')}}if(win){finishWin(pl,before);return}}state.current=[];state.message=msg;analyzeRoast(pl,sum,bust,openedNow);if(state.settings.shootout&&state.players.every(p=>(p.pilesThrown||0)>=45&&!p.winner))enterShootout();else next();render()}
 function finishWin(pl,checkoutScore){let helmets=[];if(state.settings.helmet)helmets=state.players.filter(p=>p!==pl&&p.score>=100);helmets.forEach(p=>{p.helmet++;p.helmetPending=(p.helmetPending||0)+1});pl.winner=true;pl.wins++;state.games.unshift({date:new Date().toLocaleString('no-NO'),winner:pl.name,score:state.startScore,checkout:checkoutScore,helmets:helmets.map(p=>p.name).join(', ')});if(checkoutScore>(state.records.highestCheckout.score||0))state.records.highestCheckout={player:pl.name,score:checkoutScore,date:new Date().toLocaleString('no-NO')};state.current=[];state.message=helmets.length?`HJELM: ${helmets.map(p=>p.name).join(', ')}`:`${pl.name} vant`;roast(helmets.length?'helmet':'win',helmets.length?'🪖 HJELMALARM!':'🏆 VINNER');render();showWinner(pl.name,helmets)}
 function analyzeRoast(pl,sum,bust,opened){if(bust){pl.busts++;return roast('bust',`💥 BUST, ${pl.name}!`)}if(opened&&pl.inAttempts<5)return roast('masterIn',`🚪 ${pl.name} kom inn!`,`Brukte ${pl.inAttempts} piler.`);if(sum===26)return roast('gay26',`🌈 26, ${pl.name}!`);if(sum>=100){if(sum===180)return roast('max180',`🔥 180, ${pl.name}!`);if(sum>=140)return roast('highScore',`🔥 ${sum}, ${pl.name}!`);return roast('hundredPlus',`✅ 100+, ${pl.name}!`)}state.roastMain='';state.roastSub=''}function next(){state.active=(state.active+1)%state.players.length}function giveYellow(){const p=state.players[state.active];p.yellow=(p.yellow||0)+1;state.message=`Gult kort til ${p.name}`;roast('yellow',`🟨 GULT KORT: ${p.name}`);render()}
 function enterShootout(){state.shootout=true;state.shootoutRound=1;state.shootoutScores={};state.shootoutDone={};state.players.forEach(p=>{state.shootoutScores[p.name]=null;state.shootoutDone[p.name]=false});state.current=[];state.message='BONUSRUNDE – aktiv score teller ikke';roast('shootout','🚨 45-PILERS BONUSRUNDE!','Aktiv score er nå død. Alle får 3 piler hver. Høyeste sum vinner spillet.')}function saveShootout(pl,darts,sum){pl.lastSum=sum;pl.pilesThrown=(pl.pilesThrown||0)+3;pl.darts+=3;pl.total+=sum;pl.high=Math.max(pl.high,sum);if(sum>=100)pl.hundredPlus++;else pl.weakSum++;if(sum===180)pl.n180++;recordHits(pl,darts);state.shootoutScores[pl.name]=sum;state.shootoutDone[pl.name]=true;state.throws.push({time:new Date().toLocaleString('no-NO'),player:pl.name,playerIndex:state.active,before:'BONUS',darts,sum,after:'BONUS',bust:false,shootout:true});state.current=[];if(state.players.every(p=>state.shootoutDone[p.name]))return finishShootout();nextShootout();render()}function nextShootout(){for(let i=1;i<=state.players.length;i++){const n=(state.active+i)%state.players.length;if(!state.shootoutDone[state.players[n].name]){state.active=n;return}}}function finishShootout(){const scores=state.players.map(p=>({p,score:state.shootoutScores[p.name]||0}));const max=Math.max(...scores.map(x=>x.score));const winners=scores.filter(x=>x.score===max);if(winners.length===1){const winner=winners[0].p;winner.winner=true;winner.wins++;state.games.unshift({date:new Date().toLocaleString('no-NO'),winner:winner.name,score:state.startScore,checkout:'Shootout',shootout:true,shootoutScore:max});render();showBonusWinner(winner.name,max);return}const names=winners.map(x=>x.p.name);state.players.forEach(p=>{state.shootoutDone[p.name]=!names.includes(p.name);state.shootoutScores[p.name]=names.includes(p.name)?null:-1});state.active=state.players.findIndex(p=>names.includes(p.name));state.shootoutRound++;state.current=[];roast('shootout','⚔️ UAVGJORT BONUSRUNDE!',`${names.join(', ')} må kaste igjen.`);render()}
-function undoThrow(){const t=state.throws.pop();if(!t)return;state.active=t.playerIndex;state.message='Kast angret';render()}function checkout(s){s=Number(s);if(!s||s<2||s>180)return '—';const hits=[];for(let n=1;n<=20;n++){hits.push({label:String(n),value:n,mod:'S'});hits.push({label:'D'+n,value:2*n,mod:'D'});hits.push({label:'T'+n,value:3*n,mod:'T'})}hits.push({label:'25',value:25,mod:'S'},{label:'Bull',value:50,mod:'D'});const ok=h=>state.outRule==='single'||(state.outRule==='double'&&h.mod==='D')||(state.outRule==='master'&&(h.mod==='D'||h.mod==='T'));const fin=hits.filter(ok);for(const a of fin)if(a.value===s)return a.label;for(const a of hits)for(const b of fin)if(a.value+b.value===s)return`${a.label} · ${b.label}`;for(const a of hits)for(const b of hits)for(const c of fin)if(a.value+b.value+c.value===s)return`${a.label} · ${b.label} · ${c.label}`;return '—'}function closeWinner(){document.getElementById('winnerModal').classList.remove('show')}function showWinner(name,helmets=[]){document.getElementById('winnerTitle').textContent=helmets.length?'🪖 HJELMALARM':'🏆 VINNER';document.getElementById('winnerText').textContent=helmets.length?`${helmets.map(p=>p.name).join(', ')} må ha hjelm!`:name;document.getElementById('winnerModal').classList.add('show')}function showBonusWinner(name,score){document.getElementById('winnerTitle').textContent='🏆 BONUSRUNDE-VINNER';document.getElementById('winnerText').textContent=`${name} vant med ${score}`;document.getElementById('winnerModal').classList.add('show')}
-function renderStart(){const names=getAllPlayerNames();document.getElementById('pickList').innerHTML=names.map(n=>`<label class="pick"><input type="checkbox" class="pickName" value="${n}" ${state.players.some(p=>p.name===n)?'checked':''}> ${n}</label>`).join('')}function addPlayerName(){const n=document.getElementById('newName').value.trim();if(n&&!state.known.includes(n))state.known.push(n);if(n&&!state.allPlayers[n])state.allPlayers[n]=newPlayer(n,state.startScore||501,state.inRule||'master');document.getElementById('newName').value='';save();renderStart()}function startGame(){if(!state.seasonActive)return alert('Sesongen er avsluttet. Start en ny sesong under Historikk først.');syncPlayersToDB();const names=[...document.querySelectorAll('.pickName:checked')].map(x=>x.value);if(names.length<2)return alert('Velg minst 2 spillere');const oldAll=state.allPlayers,oldRecords=state.records,oldKnown=state.known,oldSettings=state.settings,oldThrows=state.throws,oldGames=state.games,oldSeasons=state.seasons,oldSeasonId=state.seasonId,oldSeasonName=state.seasonName,oldSeasonStartedAt=state.seasonStartedAt,oldSeasonEndedAt=state.seasonEndedAt,oldSeasonActive=state.seasonActive;state=defaultState();state.known=oldKnown;state.settings=oldSettings;state.records=oldRecords;state.throws=oldThrows;state.games=oldGames;state.allPlayers=oldAll;state.seasons=oldSeasons;state.seasonId=oldSeasonId;state.seasonName=oldSeasonName;state.seasonStartedAt=oldSeasonStartedAt;state.seasonEndedAt=oldSeasonEndedAt;state.seasonActive=oldSeasonActive;state.startScore=+document.getElementById('startScore').value;state.inRule=document.getElementById('inRule').value;state.outRule=document.getElementById('outRule').value;state.players=names.map(n=>{const prev=state.allPlayers[n];const p=newPlayer(n,state.startScore,state.inRule);if(prev){['hits','hitDetail','todayHits','todayHitDetail','helmet','helmetPending','yellow','hundredPlus','weakSum','gay','busts','wins','masterHistory','high','n180'].forEach(k=>p[k]=prev[k]||p[k])}return p});state.active=Math.floor(Math.random()*state.players.length);const starter=state.players[state.active]?.name||'';const helmets=state.players.filter(p=>(p.helmetPending||0)>0);let msg=starter?'Starter tilfeldig: '+starter:'';if(helmets.length){msg+=(msg?'\n':'')+'HJELM NESTE SPILL: '+helmets.map(p=>p.name).join(', ');helmets.forEach(p=>p.helmetPending=0)}if(msg)alert(msg);showGame()}
+function undoThrow(){if(isBull300())return undoBull300Turn();const t=state.throws.pop();if(!t)return;state.active=t.playerIndex;state.message='Kast angret';render()}const checkoutCache=new Map();
+function checkout(score){
+  const key=`${state.outRule}:${score}`;
+  if(!checkoutCache.has(key))checkoutCache.set(key,findCheckout(score));
+  return checkoutCache.get(key);
+}
+function findCheckout(s){s=Number(s);if(!s||s<2||s>180)return '—';const hits=[];for(let n=1;n<=20;n++){hits.push({label:String(n),value:n,mod:'S'});hits.push({label:'D'+n,value:2*n,mod:'D'});hits.push({label:'T'+n,value:3*n,mod:'T'})}hits.push({label:'25',value:25,mod:'S'},{label:'Bull',value:50,mod:'D'});const ok=h=>state.outRule==='single'||(state.outRule==='double'&&h.mod==='D')||(state.outRule==='master'&&(h.mod==='D'||h.mod==='T'));const fin=hits.filter(ok);for(const a of fin)if(a.value===s)return a.label;for(const a of hits)for(const b of fin)if(a.value+b.value===s)return`${a.label} · ${b.label}`;for(const a of hits)for(const b of hits)for(const c of fin)if(a.value+b.value+c.value===s)return`${a.label} · ${b.label} · ${c.label}`;return '—'}function closeWinner(){document.getElementById('winnerModal').classList.remove('show')}function showWinner(name,helmets=[]){document.getElementById('winnerTitle').textContent=helmets.length?'🪖 HJELMALARM':'🏆 VINNER';document.getElementById('winnerText').textContent=helmets.length?`${helmets.map(p=>p.name).join(', ')} må ha hjelm!`:name;document.getElementById('winnerModal').classList.add('show')}function showBonusWinner(name,score){document.getElementById('winnerTitle').textContent='🏆 BONUSRUNDE-VINNER';document.getElementById('winnerText').textContent=`${name} vant med ${score}`;document.getElementById('winnerModal').classList.add('show')}
+function renderStart(){updateGameOptions();const names=getAllPlayerNames();document.getElementById('pickList').innerHTML=names.map(n=>`<label class="pick"><input type="checkbox" class="pickName" value="${n}" ${state.players.some(p=>p.name===n)?'checked':''}> ${n}</label>`).join('')}function addPlayerName(){const n=document.getElementById('newName').value.trim();if(n&&!state.known.includes(n))state.known.push(n);if(n&&!state.allPlayers[n])state.allPlayers[n]=newPlayer(n,state.startScore||501,state.inRule||'master');document.getElementById('newName').value='';save();renderStart()}function startGame(){if(!state.seasonActive)return alert('Sesongen er avsluttet. Start en ny sesong under Historikk først.');syncPlayersToDB();const names=[...document.querySelectorAll('.pickName:checked')].map(x=>x.value);if(names.length<2)return alert('Velg minst 2 spillere');const oldAll=state.allPlayers,oldRecords=state.records,oldKnown=state.known,oldSettings=state.settings,oldThrows=state.throws,oldGames=state.games,oldSeasons=state.seasons,oldSeasonId=state.seasonId,oldSeasonName=state.seasonName,oldSeasonStartedAt=state.seasonStartedAt,oldSeasonEndedAt=state.seasonEndedAt,oldSeasonActive=state.seasonActive;state=defaultState();state.known=oldKnown;state.settings=oldSettings;state.records=oldRecords;state.throws=oldThrows;state.games=oldGames;state.allPlayers=oldAll;state.seasons=oldSeasons;state.seasonId=oldSeasonId;state.seasonName=oldSeasonName;state.seasonStartedAt=oldSeasonStartedAt;state.seasonEndedAt=oldSeasonEndedAt;state.seasonActive=oldSeasonActive;state.startScore=+document.getElementById('startScore').value;state.inRule=document.getElementById('inRule').value;state.outRule=document.getElementById('outRule').value;
+if(isBull300()){
+  state.bull300Owner=null;
+  state.bull300StartTurn=state.throws.length;
+}
+state.players=names.map(n=>{const prev=state.allPlayers[n];const p=newPlayer(n,isBull300()?0:state.startScore,state.inRule);if(prev){['hits','hitDetail','todayHits','todayHitDetail','helmet','helmetPending','yellow','hundredPlus','weakSum','gay','busts','wins','masterHistory','high','n180'].forEach(k=>p[k]=prev[k]||p[k])}return p});state.active=Math.floor(Math.random()*state.players.length);const starter=state.players[state.active]?.name||'';const helmets=state.players.filter(p=>(p.helmetPending||0)>0);let msg=starter?'Starter tilfeldig: '+starter:'';if(helmets.length){msg+=(msg?'\n':'')+'HJELM NESTE SPILL: '+helmets.map(p=>p.name).join(', ');helmets.forEach(p=>p.helmetPending=0)}if(msg)alert(msg);closeWinner();showGame()}
 function statsFor(p){return{avg:p.darts?((p.total/p.darts)*3).toFixed(1):'0.0',wins:p.wins||0,hundred:p.hundredPlus||0,weak:p.weakSum||0,gay:p.gay||0,helmet:p.helmet||0,high:p.high||0,worst:(p.masterHistory||[]).length?Math.max(...p.masterHistory):0,avgIn:avgMaster(p)?avgMaster(p).toFixed(1):'0.0'}}
 
 function renderHistory(){
@@ -304,7 +468,7 @@ function renderHistory(){
   const rows=(season.throws||[]).filter(t=>!selected||t.player===selected).slice().reverse();
   document.getElementById('historyThrows').innerHTML=
     '<tr><th>Tid</th><th>Spiller</th><th>Før</th><th>Kast</th><th>Sum</th><th>Etter</th><th>Status</th></tr>'+
-    rows.map(t=>`<tr><td>${t.time}</td><td>${t.player}</td><td>${t.before}</td><td>${(t.darts||[]).map(d=>d.label).join(' | ')}</td><td>${t.sum}</td><td>${t.after}</td><td>${t.shootout?'Bonus':(t.bust?'Bust':'')}</td></tr>`).join('');
+    rows.map(t=>`<tr><td>${t.time}</td><td>${t.player}</td><td>${t.before}</td><td>${(t.darts||[]).map(d=>d.label).join(' | ')}</td><td>${t.sum}</td><td>${t.after}</td><td>${t.bull300?'300':t.shootout?'Bonus':(t.bust?'Bust':'')}</td></tr>`).join('');
 }
 
 function renderProfile(){const sel=document.getElementById('profilePlayer');const old=sel.value;const allList=getAllPlayerList();sel.innerHTML=allList.map(p=>`<option>${p.name}</option>`).join('');sel.value=old||allList[0].name;const p=allList.find(x=>x.name===sel.value)||allList[0];const total=Object.values(p.hits).reduce((a,b)=>a+(+b||0),0);const singles=Object.values(p.hitDetail).reduce((a,x)=>a+(x.S||0),0);const doubles=Object.values(p.hitDetail).reduce((a,x)=>a+(x.D||0),0);const triples=Object.values(p.hitDetail).reduce((a,x)=>a+(x.T||0),0);document.getElementById('profileCards').innerHTML=`<div class="card"><small>Total piler</small><b>${total}</b></div><div class="card"><small>Single</small><b>${singles}</b></div><div class="card"><small>Dobbel</small><b>${doubles}</b></div><div class="card"><small>Trippel</small><b>${triples}</b></div><div class="card"><small>20</small><b>${p.hits[20]||0}</b></div><div class="card"><small>High</small><b>${p.high||0}</b></div>`;const keys=[20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,25,'Bull','M'];document.getElementById('hitTable').innerHTML=`<table class="table"><tr><th>Tall</th><th>Total</th><th>S</th><th>D</th><th>T</th></tr>${keys.map(k=>{const d=p.hitDetail[k]||{};return`<tr><td>${k}</td><td>${p.hits[k]||0}</td><td>${d.S||0}</td><td>${d.D||0}</td><td>${d.T||0}</td></tr>`}).join('')}</table>`}
@@ -326,23 +490,21 @@ function saveSettings(){
 function exportBackup(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({version:'v17-cloud',state},null,2)],{type:'application/json'}));a.download='dart-score-backup.json';a.click()}
 function importBackup(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const d=JSON.parse(r.result);if(!d.state)return alert('Ugyldig backup');state=d.state;state.allPlayers=state.allPlayers||{};syncPlayersToDB();save();location.reload()};r.readAsText(f)}
 function clearAllStats(){if(!confirm('Slette statistikk i AKTIV sesong? Tidligere avsluttede sesonger beholdes.'))return;const names=state.known,settings=state.settings,seasons=state.seasons,seasonId=state.seasonId,seasonName=state.seasonName,seasonStartedAt=state.seasonStartedAt,seasonActive=state.seasonActive,seasonEndedAt=state.seasonEndedAt;state=defaultState();state.known=names;state.settings=settings;state.seasons=seasons;state.seasonId=seasonId;state.seasonName=seasonName;state.seasonStartedAt=seasonStartedAt;state.seasonActive=seasonActive;state.seasonEndedAt=seasonEndedAt;state.allPlayers={};names.forEach(n=>state.allPlayers[n]=newPlayer(n,state.startScore,state.inRule));save();location.reload()}
-async function factoryReset(){
+function factoryReset(){
   if(!confirm('Nullstille hele appen – både lokalt og i Neon?'))return;
-  const clean=defaultState();
-  await resetCloudState(clean);
-  localStorage.removeItem(STORE);
+  state=defaultState();
+  save();
   location.reload();
 }
-async function initApp(){
-  // Prøv skyen først. Hvis Neon er tom/utilgjengelig, beholdes lokal state.
-  await loadCloudState();
-
+function initApp(){
   ensure();
+  syncPlayersToDB();
+  savedSnapshot=JSON.stringify(state);
   applyDisplayMode();
   buildNumbers();
   render();
+  loadCloudState();
 
-  // Hvis Neon var tom, vil render()->save() synkronisere lokal state etter 500 ms.
   if('serviceWorker'in navigator){
     navigator.serviceWorker.register('service-worker.js').catch(error=>{
       console.warn('DART SCORE: service worker kunne ikke registreres.',error);
