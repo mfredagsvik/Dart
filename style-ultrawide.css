@@ -164,19 +164,200 @@ html[data-display="ultrawide3440"] .cards{grid-template-columns:repeat(8,1fr)}
 html[data-display="ultrawide3440"] .season-status b{font-size:30px}
 html[data-display="ultrawide3440"] .season-status span{font-size:18px}
 
-/* Auto mode: use v18 ultrawide layout only when browser really exposes enough CSS pixels. */
-@media (min-width:2400px) and (min-height:1100px){
-  html[data-display="auto"] #game{
-    grid-template-rows:74px 250px minmax(0,1fr) 410px;
-    gap:12px;padding:12px;
+/* Auto fits the visible browser viewport. The two fixed display profiles
+   declared above remain available for dedicated screens. */
+html[data-display="auto"] body{
+  overflow:auto;
+}
+html[data-display="auto"] #game{
+  width:100%;
+  height:auto;
+  min-height:100dvh;
+  grid-template-rows:auto auto minmax(180px,1fr) clamp(184px,32dvh,385px);
+  gap:clamp(6px,1vmin,14px);
+  padding:clamp(6px,1vmin,14px);
+}
+html[data-display="auto"] .top{
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  min-height:48px;
+  gap:8px;
+  padding-block:6px;
+}
+html[data-display="auto"] .logo,
+html[data-display="auto"] .title{
+  font-size:clamp(18px,2vw,38px);
+}
+html[data-display="auto"] .players{
+  grid-template-columns:repeat(var(--browser-cols),minmax(0,1fr));
+}
+html[data-display="auto"] .player{
+  min-width:0;
+  min-height:clamp(94px,16dvh,220px);
+  padding:clamp(6px,1vmin,16px);
+  gap:3px;
+}
+html[data-display="auto"] .player.active::before{
+  content:none;
+}
+html[data-display="auto"] .pname{
+  font-size:clamp(14px,1.5vw,28px);
+}
+html[data-display="auto"] .proast{
+  font-size:clamp(10px,1vw,18px);
+  white-space:normal;
+}
+html[data-display="auto"] .pscore{
+  font-size:clamp(29px,7dvh,112px);
+}
+html[data-display="auto"] .pstats{
+  display:flex;
+  justify-content:space-between;
+  gap:3px;
+}
+html[data-display="auto"] .pstats b{
+  font-size:clamp(12px,1.25vw,20px);
+}
+html[data-display="auto"] .mid{
+  grid-template-columns:minmax(112px,1fr) minmax(0,4fr) minmax(68px,.55fr);
+}
+html[data-display="auto"] .board{
+  grid-template-columns:minmax(125px,1fr) minmax(0,2.3fr);
+}
+html[data-display="auto"] .board > *,
+html[data-display="auto"] .dart,
+html[data-display="auto"] .keypad > *{
+  min-width:0;
+}
+html[data-display="auto"] .board > .active,
+html[data-display="auto"] .roast{
+  padding:clamp(8px,1.3vmin,24px);
+  overflow-wrap:anywhere;
+}
+html[data-display="auto"] .aname{
+  font-size:clamp(18px,2vw,42px);
+}
+html[data-display="auto"] .ascore{
+  font-size:clamp(42px,9dvh,148px);
+  line-height:.95;
+}
+html[data-display="auto"] .dval{
+  font-size:clamp(25px,6dvh,95px);
+}
+html[data-display="auto"] .darts{
+  grid-template-rows:minmax(84px,1fr) auto;
+}
+html[data-display="auto"] .live{
+  min-height:42px;
+}
+html[data-display="auto"] .live b{
+  font-size:clamp(19px,4dvh,48px);
+}
+html[data-display="auto"] .side > *{
+  padding:5px 8px;
+}
+html[data-display="auto"] .side b{
+  margin-top:2px;
+  font-size:clamp(16px,2.4dvh,34px);
+}
+html[data-display="auto"] .keypad{
+  grid-template-columns:minmax(48px,.8fr) minmax(0,7fr) minmax(48px,.8fr);
+}
+html[data-display="auto"] .numbers button{
+  min-width:0;
+  padding:2px;
+  font-size:clamp(20px,4dvh,56px);
+}
+html[data-display="auto"] .numbers :is(.wide1,.wide2,.wide3){
+  font-size:clamp(11px,2.3dvh,32px);
+}
+html[data-display="auto"] :is(.double,.triple,.miss){
+  min-width:0;
+  font-size:clamp(26px,7dvh,92px);
+}
+html[data-display="auto"] .page{
+  width:100%;
+  height:auto;
+  min-height:100dvh;
+}
+html[data-display="auto"] .panel:has(.table){
+  overflow-x:auto;
+}
+html[data-display="auto"] .box{
+  width:min(560px,calc(100% - 24px));
+  min-width:0;
+}
+
+@media (max-width:1199px){
+  html[data-display="auto"] .players{
+    grid-template-columns:repeat(var(--cols),minmax(0,1fr));
   }
-  html[data-display="auto"] .logo{font-size:30px}
-  html[data-display="auto"] .title{font-size:38px}
-  html[data-display="auto"] .players{grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:12px}
-  html[data-display="auto"] .pscore{font-size:112px}
-  html[data-display="auto"] .mid{grid-template-columns:390px minmax(0,1fr) 210px;gap:12px}
-  html[data-display="auto"] .board{grid-template-columns:390px minmax(0,1fr)}
-  html[data-display="auto"] .ascore{font-size:126px}
-  html[data-display="auto"] .keypad{grid-template-columns:190px minmax(0,1fr) 220px;gap:12px}
-  html[data-display="auto"] .numbers button{font-size:49px}
+  html[data-display="auto"] .player{
+    min-height:clamp(88px,13dvh,145px);
+  }
+  html[data-display="auto"] nav{
+    flex-wrap:wrap;
+    justify-content:flex-end;
+  }
+}
+@media (max-width:760px){
+  html[data-display="auto"] #game{
+    grid-template-rows:auto auto auto 194px;
+  }
+  html[data-display="auto"] .top{
+    grid-template-columns:1fr auto;
+  }
+  html[data-display="auto"] nav{
+    grid-column:1/-1;
+    justify-self:stretch;
+    flex-wrap:wrap;
+  }
+  html[data-display="auto"] nav button{
+    flex:1 1 auto;
+  }
+  html[data-display="auto"] .mid{
+    grid-template-columns:minmax(0,1fr);
+  }
+  html[data-display="auto"] .board{
+    grid-row:1;
+  }
+  html[data-display="auto"] .side{
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    grid-template-rows:auto;
+  }
+  html[data-display="auto"] .roast:not(:has(.rmain:empty + .rsub:empty)){
+    display:block;
+  }
+  html[data-display="auto"] .roast:has(.rmain:empty + .rsub:empty){
+    display:none;
+  }
+  html[data-display="auto"] :is(.rmain,.rsub){
+    margin-top:4px;
+  }
+  html[data-display="auto"] .pstats{
+    display:none;
+  }
+  html[data-display="auto"] .grid{
+    grid-template-columns:1fr;
+  }
+  html[data-display="auto"] .cards{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+}
+@media (max-width:440px){
+  html[data-display="auto"] .players{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  html[data-display="auto"] .keypad{
+    grid-template-columns:35px minmax(0,1fr) 35px;
+    gap:4px;
+  }
+  html[data-display="auto"] :is(.numbers,.mods){
+    gap:4px;
+  }
+  html[data-display="auto"] .dartcards{
+    gap:3px;
+  }
+  html[data-display="auto"] .dart h4{
+    font-size:11px;
+  }
 }

@@ -1,4 +1,4 @@
-const CACHE='dart-score-v19-bull300-1';
+const CACHE='dart-score-v19-browser-1';
 const ASSETS=['./','./index.html','./style.css','./style-ultrawide.css','./app.js','./roasts.js','./manifest.json','./icon-192.png','./icon-512.png'];
 const assetUrls=new Set(ASSETS.map(path=>new URL(path,self.registration.scope).href));
 
